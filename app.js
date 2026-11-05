@@ -12,9 +12,10 @@ import {
   EmailAuthProvider, reauthenticateWithCredential, deleteUser,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where,
+  getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { firebaseConfig } from "./firebase-config.js?v=12";
+import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=13";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -152,7 +153,7 @@ function firestoreStore(db, uid) {
     kind: "account",
     canLink: true,
     watchProfile: (cb, onError) => watch(userRef, (d, m) => cb(d
-      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null }
+      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null }
       : null, m), onError),
     watchSharing: (cb, onError) => watch(userRef, (d, m) => cb(d?.shareCode ? { code: d.shareCode, cycle: !!d.shareCycle } : null, m), onError),
     watchLinks: (cb, onError) => watch(userRef, (d, m) => cb({ people: Array.isArray(d?.links) ? d.links : [] }, m), onError),
@@ -161,6 +162,13 @@ function firestoreStore(db, uid) {
     saveName: (name) => mergeUser({ name }),
     saveProfile: (changes) => mergeUser(changes),       // { name?, gender? }
     saveCycle: (cycle) => mergeUser({ cycle }),         // private: never copied to shares
+    // Reminder settings; the token lets the reminder job reach this device
+    saveReminders: (reminders, device) => mergeUser({
+      reminders,
+      remindersOn: !!(reminders.water?.on || reminders.workout?.on),
+      ...(device ? { pushTokens: arrayUnion(device) } : {}),
+    }),
+    removeDevice: (device) => mergeUser({ pushTokens: arrayRemove(device) }),
     saveSharing: (code, shareCycle = false) => mergeUser({ shareCode: code, shareCycle }),
     saveLinks: (people) => mergeUser({ links: people }),
 
@@ -352,6 +360,9 @@ const el = {
   deleteMsg: $("delete-msg"), deleteConfirm: $("delete-confirm"), deleteCancel: $("delete-cancel"),
   verifyPanel: $("verify-panel"), verifyEmail: $("verify-email"), verifyMsg: $("verify-msg"),
   verifyDone: $("verify-done"), verifyResend: $("verify-resend"), verifySignout: $("verify-signout"),
+  remPanel: $("reminders-panel"), remNote: $("rem-note"), remBody: $("rem-body"), remMsg: $("rem-msg"), remTest: $("rem-test"),
+  remWaterOn: $("rem-water-on"), remWaterFrom: $("rem-water-from"), remWaterTo: $("rem-water-to"), remWaterEvery: $("rem-water-every"),
+  remWorkoutOn: $("rem-workout-on"), remWorkoutTime: $("rem-workout-time"),
   installTip: $("install-tip"), installText: $("install-text"), installBtn: $("install-btn"), installClose: $("install-close"),
   linkForm: $("link-form"), linkCode: $("link-code"), linkMsg: $("link-msg"), linkList: $("link-list"),
 };
@@ -390,6 +401,7 @@ function render() {
   el.panel.hidden = signedOut || !store;
   el.linkPanel.hidden = signedOut || !store?.canLink || !!blocked;
   el.accountPanel.hidden = signedOut || !store;
+  el.remPanel.hidden = signedOut || !store || !!viewing || !!blocked;
   if (me) el.accountEmail.textContent = me.email;
   el.people.hidden = signedOut || links.length === 0;
   if (signedOut || !store) return;
@@ -398,6 +410,7 @@ function render() {
   renderSummary();
   renderGoals();
   renderNudge();
+  renderReminders();
   renderPanel();
   renderLinkPanel();
   setStatus();
@@ -1430,9 +1443,169 @@ auth_.forgot.addEventListener("click", async () => {
 el.signOutBtn.addEventListener("click", async () => {
   for (const d of Object.keys(timers)) { clearTimeout(timers[d]); flush(d); }
   await Promise.allSettled(Object.values(chains));
+  await forgetThisDevice();
   await signOut(auth);
   location.reload(); // start clean so nothing from this account stays on screen
 });
+
+// ---------- Reminders ----------
+const DEFAULT_REMINDERS = {
+  water: { on: false, from: "09:00", to: "21:00", every: 2 },
+  workout: { on: false, time: "18:00" },
+};
+const PUSH_KEY = "health-log-push";
+let fbApp = null;
+let pushState = "checking";   // ok | needs-install | unsupported | not-ready | checking
+
+const isIOSDevice = () => /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+function remindersNow() {
+  const r = profile?.reminders || {};
+  return {
+    water: { ...DEFAULT_REMINDERS.water, ...(r.water || {}) },
+    workout: { ...DEFAULT_REMINDERS.workout, ...(r.workout || {}) },
+  };
+}
+
+function deviceName() {
+  const ua = navigator.userAgent;
+  if (/iPad/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) return "iPad";
+  if (/iPhone/.test(ua)) return "iPhone";
+  if (/Android/.test(ua)) return "Android";
+  if (/Mac/.test(ua)) return "Mac";
+  if (/Windows/.test(ua)) return "Windows";
+  return "Browser";
+}
+
+async function checkPush() {
+  if (!vapidKey || vapidKey.startsWith("PASTE")) return "not-ready";
+  if (isIOSDevice() && !isStandalone()) return "needs-install";
+  if (!("serviceWorker" in navigator) || !("Notification" in window)) return isIOSDevice() ? "needs-install" : "unsupported";
+  try { return (await messagingSupported()) ? "ok" : "unsupported"; } catch { return "unsupported"; }
+}
+
+const remNotes = {
+  "needs-install": "On iPhone and iPad, reminders work when Health Log is on your Home Screen. In Safari, tap Share, then Add to Home Screen (keep Open as Web App on). Open Health Log from that icon and turn reminders on there.",
+  unsupported: "This browser can't show reminders. Try Chrome on Android, or Health Log from your iPhone Home Screen.",
+  "not-ready": "Reminders are almost ready. This section will switch on soon.",
+  checking: "",
+};
+
+function renderReminders() {
+  if (el.remPanel.hidden) return;
+  const r = remindersNow();
+  const ok = pushState === "ok";
+  el.remNote.hidden = ok || pushState === "checking";
+  el.remNote.textContent = remNotes[pushState] || "";
+  el.remWaterOn.checked = ok && r.water.on;
+  el.remWorkoutOn.checked = ok && r.workout.on;
+  setValue(el.remWaterFrom, r.water.from);
+  setValue(el.remWaterTo, r.water.to);
+  setValue(el.remWaterEvery, String(r.water.every));
+  setValue(el.remWorkoutTime, r.workout.time);
+  for (const c of [el.remWaterOn, el.remWaterFrom, el.remWaterTo, el.remWaterEvery, el.remWorkoutOn, el.remWorkoutTime]) c.disabled = !ok;
+  el.remTest.hidden = !(ok && "Notification" in window && Notification.permission === "granted");
+}
+
+async function deviceToken() {
+  if (Notification.permission === "denied") throw { code: "denied" };
+  if (Notification.permission !== "granted") {
+    const answer = await Notification.requestPermission();
+    if (answer !== "granted") throw { code: "denied" };
+  }
+  const reg = await navigator.serviceWorker.register("firebase-messaging-sw.js", { scope: "./" });
+  const token = await getToken(getMessaging(fbApp), { vapidKey, serviceWorkerRegistration: reg });
+  if (!token) throw { code: "no-token" };
+  const device = { token, device: deviceName() };
+  try { localStorage.setItem(PUSH_KEY, JSON.stringify({ uid: currentUser?.uid, ...device })); } catch {}
+  return device;
+}
+
+async function saveReminders(r, device) {
+  const reminders = { ...r, tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" };
+  profile = { ...(profile || {}), reminders };
+  render();
+  await store.saveReminders(reminders, device);
+}
+
+async function toggleReminder(kind, input) {
+  if (readOnly() || pushState !== "ok") return;
+  const before = profile?.reminders || null;
+  const r = remindersNow();
+  r[kind].on = input.checked;
+  profile = { ...(profile || {}), reminders: { ...r, tz: before?.tz } }; // show the change right away
+  render();
+  let device = null;
+  if (input.checked) {
+    el.remMsg.textContent = "Turning on reminders…";
+    try {
+      device = await deviceToken();
+    } catch (err) {
+      profile = { ...(profile || {}), reminders: before };
+      render();
+      el.remMsg.textContent = err?.code === "denied"
+        ? (isIOSDevice()
+          ? "Notifications are off for Health Log. Turn them on in Settings, Notifications, Health Log, then try again."
+          : "Notifications are blocked for this site. Allow them in your browser's site settings, then try again.")
+        : "Couldn't turn on reminders on this device. Check your connection and try again.";
+      return;
+    }
+  }
+  try {
+    await saveReminders(r, device);
+    const what = kind === "water" ? "Water" : "Workout";
+    el.remMsg.textContent = input.checked ? `${what} reminders are on for this device.` : `${what} reminders are off.`;
+  } catch (err) {
+    handleWriteError(err);
+    el.remMsg.textContent = "Couldn't save. Check your connection and try again.";
+  }
+}
+
+el.remWaterOn.addEventListener("change", () => toggleReminder("water", el.remWaterOn));
+el.remWorkoutOn.addEventListener("change", () => toggleReminder("workout", el.remWorkoutOn));
+
+let remTimer = null;
+function onReminderField() {
+  clearTimeout(remTimer);
+  remTimer = setTimeout(async () => {
+    const r = remindersNow();
+    r.water.from = el.remWaterFrom.value || r.water.from;
+    r.water.to = el.remWaterTo.value || r.water.to;
+    r.water.every = Number(el.remWaterEvery.value) || r.water.every;
+    r.workout.time = el.remWorkoutTime.value || r.workout.time;
+    if (r.water.to <= r.water.from) {
+      el.remMsg.textContent = "Water reminders: the end time needs to be after the start time.";
+      return;
+    }
+    try {
+      await saveReminders(r, null);
+      el.remMsg.textContent = "Reminder times saved.";
+    } catch (err) { handleWriteError(err); }
+  }, 600);
+}
+for (const c of [el.remWaterFrom, el.remWaterTo, el.remWaterEvery, el.remWorkoutTime]) c.addEventListener("change", onReminderField);
+
+el.remTest.addEventListener("click", async () => {
+  try {
+    const reg = await navigator.serviceWorker.getRegistration("./") || await navigator.serviceWorker.register("firebase-messaging-sw.js", { scope: "./" });
+    await reg.showNotification("Health Log", { body: "Reminders are working on this device.", icon: "icons/icon-192.png" });
+    el.remMsg.textContent = "Test notification sent. If you didn't see it, check your phone's notification settings.";
+  } catch {
+    el.remMsg.textContent = "Couldn't show a test notification on this device.";
+  }
+});
+
+// On sign-out, stop sending this person's reminders to this device
+async function forgetThisDevice() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PUSH_KEY) || "null");
+    if (saved && saved.uid === currentUser?.uid && store) {
+      await store.removeDevice({ token: saved.token, device: saved.device });
+    }
+    localStorage.removeItem(PUSH_KEY);
+  } catch {}
+}
 
 // ---------- Email verification ----------
 const appUrl = () => location.origin + location.pathname;
@@ -1597,6 +1770,7 @@ render();
     return;
   }
   const app = initializeApp(firebaseConfig);
+  fbApp = app;
   // Keep people signed in on this device (also inside home-screen web apps)
   auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
   const db = getFirestore(app);
@@ -1640,5 +1814,6 @@ render();
     start(firestoreStore(db, user.uid));
     render();
     loadRecent();
+    checkPush().then((state) => { pushState = state; render(); });
   };
 })();

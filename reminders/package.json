@@ -1,0 +1,12 @@
+{
+  "name": "health-log-reminders",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "send": "node send-reminders.mjs",
+    "test": "node --test schedule.test.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "12.7.0"
+  }
+}

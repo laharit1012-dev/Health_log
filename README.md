@@ -18,6 +18,20 @@ Each day you can log:
 
 Use the arrows at the top to look back at earlier days. **Edit profile** changes your name and gender. Gender is asked when you create an account.
 
+## Reminders
+
+In **Reminders**, each person can turn on:
+- **Drink water:** every 1–3 hours between the times they choose.
+- **Workout:** once a day at a chosen time.
+
+A reminder is skipped once that goal is already reached for the day. On iPhone and iPad, reminders work when Health Log is opened from the Home Screen (Add to Home Screen, with Open as Web App on).
+
+How it works: `.github/workflows/reminders.yml` runs `reminders/send-reminders.mjs` every 15 minutes (GitHub may start it a few minutes late). It reads the reminder settings of people who turned reminders on, works out what's due in each person's time zone, and sends notifications with Firebase Cloud Messaging. `firebase-messaging-sw.js` shows them on the device. Scheduling rules live in `reminders/schedule.mjs` (tests: `cd reminders && npm test`).
+
+Setup (once):
+1. Firebase console → Project settings → **Cloud Messaging** → Web Push certificates → **Generate key pair**. Put the key in `vapidKey` in `firebase-config.js`.
+2. Firebase console → Project settings → **Service accounts** → **Generate new private key**. In GitHub → Settings → Secrets and variables → Actions, add it as a secret named `FIREBASE_SERVICE_ACCOUNT` (paste the whole file's contents). Never commit this file.
+
 ## Install it like an app
 
 Open the link, then:

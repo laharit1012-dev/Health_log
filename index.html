@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
   <header class="site-header">
@@ -329,6 +329,48 @@
       </div>
     </section>
 
+    <!-- Reminders (push notifications) -->
+    <section id="reminders-panel" class="link-panel" aria-labelledby="reminders-title" hidden>
+      <div class="stack stack--tight">
+        <h2 id="reminders-title">Reminders</h2>
+        <p class="hint">Gentle nudges on this device. A reminder is skipped once you've reached that goal for the day.</p>
+      </div>
+      <p id="rem-note" class="view-note" hidden></p>
+      <div id="rem-body" class="link-grid">
+        <div class="log-block">
+          <label class="switch-row">
+            <span><strong>Drink water</strong></span>
+            <input id="rem-water-on" class="switch" type="checkbox" role="switch">
+          </label>
+          <div class="pair">
+            <label class="field"><span>From</span><input id="rem-water-from" type="time"></label>
+            <label class="field"><span>Until</span><input id="rem-water-to" type="time"></label>
+          </div>
+          <label class="field">
+            <span>Every</span>
+            <select id="rem-water-every">
+              <option value="1">1 hour</option>
+              <option value="1.5">1½ hours</option>
+              <option value="2">2 hours</option>
+              <option value="3">3 hours</option>
+            </select>
+          </label>
+        </div>
+        <div class="log-block">
+          <label class="switch-row">
+            <span><strong>Workout</strong></span>
+            <input id="rem-workout-on" class="switch" type="checkbox" role="switch">
+          </label>
+          <label class="field"><span>Remind me at</span><input id="rem-workout-time" type="time"></label>
+          <p class="hint">Once a day, unless you've already reached your workout goal.</p>
+        </div>
+      </div>
+      <p id="rem-msg" class="hint" aria-live="polite"></p>
+      <div>
+        <button id="rem-test" class="btn btn--ghost btn--small" type="button" hidden>Show a test notification</button>
+      </div>
+    </section>
+
     <!-- Link logs with share codes -->
     <section id="link-panel" class="link-panel" aria-labelledby="link-title" hidden>
       <div class="stack stack--tight">
@@ -408,13 +450,13 @@
   </main>
 
   <footer class="site-footer">
-    <p>Health Log · version <span id="app-version">12</span> · <a href="privacy.html">Privacy policy</a></p>
+    <p>Health Log · version <span id="app-version">13</span> · <a href="privacy.html">Privacy policy</a></p>
   </footer>
 
   <!-- Goal celebrations -->
   <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <script type="module" src="app.js?v=12"></script>
+  <script type="module" src="app.js?v=13"></script>
 </body>
 </html>
