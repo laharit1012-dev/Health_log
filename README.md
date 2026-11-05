@@ -39,6 +39,12 @@ Setup (once):
 1. Firebase console → Project settings → **Cloud Messaging** → Web Push certificates → **Generate key pair**. Put the key in `vapidKey` in `firebase-config.js`.
 2. Firebase console → Project settings → **Service accounts** → **Generate new private key**. In GitHub → Settings → Secrets and variables → Actions, add it as a secret named `FIREBASE_SERVICE_ACCOUNT` (paste the whole file's contents). Never commit this file.
 
+## Cycle phases and cycle updates
+
+The Cycle page shows the current phase (Period, Follicular, Ovulation, Luteal) with a short note on how energy and mood often feel. Phases are estimated from logged period start dates and cycle length (period about 5 days, ovulation about 14 days before the next period).
+
+When someone views a person who shares their cycle tracker, they're asked once: **Get cycle updates?** If yes, the reminders job sends them a notification when that person's phase changes (between 9 AM and 9 PM their time). They can switch updates on or off any time under **Reminders → Cycle updates**.
+
 ## Groups
 
 On the **Family** page, under **Groups**:

@@ -44,3 +44,66 @@ export function workoutMinutes(day) {
 }
 
 export const DEFAULT_GOALS = { steps: 10000, water: 8, sleep: 8, workout: 30 };
+
+// ---------- Cycle phases (also used by the app itself) ----------
+// Estimated from logged period start dates and cycle length:
+// period ~5 days, ovulation ~14 days before the next period (±1 day), luteal until the next period.
+const dayNum = (iso) => { const [y, m, d] = iso.split("-").map(Number); return Date.UTC(y, m - 1, d) / 86400000; };
+const isoOf = (n) => new Date(n * 86400000).toISOString().slice(0, 10);
+
+export function cycleLength(cycle) {
+  const starts = [...new Set(Array.isArray(cycle?.starts) ? cycle.starts : [])].sort();
+  const gaps = [];
+  for (let i = 1; i < starts.length; i++) {
+    const g = dayNum(starts[i]) - dayNum(starts[i - 1]);
+    if (g >= 15 && g <= 60) gaps.push(g);
+  }
+  const avg = gaps.length ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) : null;
+  return cycle?.length || avg || 28;
+}
+
+export function cyclePhase(cycle, dateISO) {
+  const starts = [...new Set(Array.isArray(cycle?.starts) ? cycle.starts : [])].sort();
+  const last = [...starts].reverse().find((d) => d <= dateISO);
+  if (!last) return null;
+  const len = cycleLength(cycle);
+  const day = dayNum(dateISO) - dayNum(last) + 1;
+  if (day > len + 10) return null; // no recent period logged; don't guess
+  const ovu = Math.max(8, len - 14);
+  const s = dayNum(last);
+  let phase, from;
+  if (day <= 5) { phase = "menstrual"; from = s; }
+  else if (day < ovu - 1) { phase = "follicular"; from = s + 5; }
+  else if (day <= ovu + 1) { phase = "ovulation"; from = s + ovu - 2; }
+  else if (day <= len) { phase = "luteal"; from = s + ovu + 1; }
+  else { phase = "late"; from = s + len; }
+  return { phase, day, length: len, since: isoOf(from) };
+}
+
+export const PHASES = {
+  menstrual: {
+    name: "Period",
+    note: "Energy may be lower and cramps are common. Rest, warmth and a little extra patience help.",
+    title: (n) => `${n}'s period has started`,
+  },
+  follicular: {
+    name: "Follicular phase",
+    note: "Energy and mood often lift. A great week for plans and workouts together.",
+    title: (n) => `${n} is in her follicular phase`,
+  },
+  ovulation: {
+    name: "Ovulation",
+    note: "Many feel confident, social and energetic around now.",
+    title: (n) => `${n} is around ovulation`,
+  },
+  luteal: {
+    name: "Luteal phase",
+    note: "Energy may dip and mood can be more sensitive, especially in the last few days. Kindness goes a long way.",
+    title: (n) => `${n} is in her luteal phase`,
+  },
+  late: {
+    name: "Period expected",
+    note: "Her next period is due around now. Comfort and patience help.",
+    title: (n) => `${n}'s period is due around now`,
+  },
+};

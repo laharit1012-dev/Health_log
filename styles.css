@@ -1136,3 +1136,18 @@ body[data-route="today"] .goals-row {
 .rate { width: 4.5rem; height: 4.5rem; }
 .rate__text strong { font-size: 0.875rem; }
 .rate__text small { font-size: 0.625rem; }
+
+/* ---------- Cycle phase and cycle updates ---------- */
+.cycle-phase {
+  margin: 0;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem 0.875rem;
+  border-radius: 0.625rem;
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+.cycle-phase strong { color: var(--accent); }
+.watch-ask { background: var(--surface); }
+.watch-ask p { margin: 0; }
+.switch-row--list { padding: 0.25rem 0; }

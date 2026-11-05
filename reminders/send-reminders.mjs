@@ -3,7 +3,7 @@
 // skips reminders for goals already reached today, and sends them with
 // Firebase Cloud Messaging.
 import admin from "firebase-admin";
-import { localNow, waterSlotDue, workoutDue, workoutMinutes, DEFAULT_GOALS } from "./schedule.mjs";
+import { localNow, waterSlotDue, workoutDue, workoutMinutes, DEFAULT_GOALS, cyclePhase, PHASES } from "./schedule.mjs";
 
 const APP_URL = "https://laharit1012-dev.github.io/Health_log/";
 const ICON = APP_URL + "icons/icon-192.png";
@@ -39,8 +39,16 @@ async function sendTo(tokens, title, body) {
   return { sent, dead };
 }
 
-const users = await db.collection("users").where("remindersOn", "==", true).get();
+// People with water/workout reminders, plus people who asked for someone's cycle updates
+const [withReminders, withCycle] = await Promise.all([
+  db.collection("users").where("remindersOn", "==", true).get(),
+  db.collection("users").where("cycleWatchOn", "==", true).get(),
+]);
+const byId = new Map();
+for (const d of [...withReminders.docs, ...withCycle.docs]) byId.set(d.id, d);
+const users = { docs: [...byId.values()], size: byId.size };
 let total = 0;
+const shareCache = new Map();
 
 for (const snap of users.docs) {
   const u = snap.data();
@@ -51,13 +59,40 @@ for (const snap of users.docs) {
   const goals = { ...DEFAULT_GOALS, ...(u.goals || {}) };
   const state = u.reminderState || {};
   const local = localNow(now, r.tz || "UTC");
-  const waterKey = waterSlotDue(r.water, local, state.waterSlot);
-  const workoutKey = workoutDue(r.workout, local, state.workoutDate);
-  if (!waterKey && !workoutKey) continue;
-
-  const day = (await db.doc(`users/${snap.id}/days/${local.date}`).get()).data() || {};
+  const waterKey = u.remindersOn ? waterSlotDue(r.water, local, state.waterSlot) : null;
+  const workoutKey = u.remindersOn ? workoutDue(r.workout, local, state.workoutDate) : null;
   const update = {};
   let dead = [];
+
+  // Cycle updates: someone shared their cycle tracker and this person asked to be told
+  // when the phase changes. Sent between 9 AM and 9 PM their time.
+  const watched = (Array.isArray(u.links) ? u.links : []).filter((l) => l?.cycleUpdates && l.code);
+  if (watched.length && local.minutes >= 9 * 60 && local.minutes <= 21 * 60) {
+    for (const link of watched) {
+      if (!shareCache.has(link.code)) shareCache.set(link.code, (await db.doc(`shares/${link.code}`).get()).data() || null);
+      const share = shareCache.get(link.code);
+      if (!share?.cycle) continue; // not shared (any more)
+      const ph = cyclePhase(share.cycle, local.date);
+      if (!ph) continue;
+      const key = `${ph.phase}@${ph.since}`;
+      if (state.cycle?.[link.code] === key) continue;
+      update[`reminderState.cycle.${link.code}`] = key;
+      const name = share.name || link.name || "She";
+      const info = PHASES[ph.phase];
+      const res = await sendTo(tokens, info.title(name), info.note);
+      total += res.sent; dead = dead.concat(res.dead);
+    }
+  }
+
+  if (!waterKey && !workoutKey) {
+    if (Object.keys(update).length || dead.length) {
+      if (dead.length) update.pushTokens = tokens.filter((t) => !dead.includes(t.token));
+      await snap.ref.update(update);
+    }
+    continue;
+  }
+
+  const day = (await db.doc(`users/${snap.id}/days/${local.date}`).get()).data() || {};
 
   if (waterKey) {
     update["reminderState.waterSlot"] = waterKey;
@@ -85,4 +120,4 @@ for (const snap of users.docs) {
   await snap.ref.update(update);
 }
 
-console.log(`Checked ${users.size} people with reminders on. Sent ${total} notifications.`);
+console.log(`Checked ${users.size} people with reminders or cycle updates on. Sent ${total} notifications.`);

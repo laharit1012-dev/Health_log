@@ -40,3 +40,27 @@ test("workout: once a day after the chosen time", () => {
   assert.equal(workoutDue(w, at(18, 0, "2026-11-06"), "2026-11-05"), "2026-11-06");
   assert.equal(workoutDue(w, at(21, 0), null), null); // more than 2 hours late
 });
+
+import { cyclePhase } from "./schedule.mjs";
+
+test("cycle phases for a 28-day cycle starting Nov 1", () => {
+  const c = { starts: ["2026-11-01"], length: 28 };
+  assert.equal(cyclePhase(c, "2026-11-01").phase, "menstrual");
+  assert.equal(cyclePhase(c, "2026-11-05").phase, "menstrual");
+  assert.equal(cyclePhase(c, "2026-11-06").phase, "follicular");
+  assert.equal(cyclePhase(c, "2026-11-06").since, "2026-11-06");
+  assert.equal(cyclePhase(c, "2026-11-12").phase, "follicular");
+  assert.equal(cyclePhase(c, "2026-11-13").phase, "ovulation");   // day 13-15 around ovulation (day 14)
+  assert.equal(cyclePhase(c, "2026-11-15").phase, "ovulation");
+  assert.equal(cyclePhase(c, "2026-11-16").phase, "luteal");
+  assert.equal(cyclePhase(c, "2026-11-28").phase, "luteal");
+  assert.equal(cyclePhase(c, "2026-11-30").phase, "late");
+  assert.equal(cyclePhase(c, "2026-12-15"), null);                // long gap: don't guess
+  assert.equal(cyclePhase(c, "2026-10-30"), null);                // before any period
+});
+
+test("cycle length comes from her history when not set", () => {
+  const c = { starts: ["2026-09-01", "2026-10-03", "2026-11-04"] }; // 32-day cycles
+  assert.equal(cyclePhase(c, "2026-11-20").length, 32);
+  assert.equal(cyclePhase(c, "2026-11-20").phase, "ovulation");   // day 17, ovulation ~day 18
+});

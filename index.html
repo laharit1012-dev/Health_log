@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=23">
+  <link rel="stylesheet" href="styles.css?v=24">
 </head>
 <body>
   <!-- Background wallpaper: full on Today, dimmed on the other pages -->
@@ -102,6 +102,17 @@
 
     <!-- Switch between your log and logs linked to you -->
     <nav id="people" class="people" aria-label="Whose log to show" hidden></nav>
+
+    <!-- Asked once when viewing someone who shares their cycle tracker -->
+    <aside id="watch-ask" class="confirm watch-ask" aria-labelledby="watch-ask-title" hidden>
+      <p><strong id="watch-ask-title"></strong></p>
+      <p id="watch-ask-text"></p>
+      <div class="row">
+        <button id="watch-yes" class="btn" type="button">Yes, notify me</button>
+        <button id="watch-no" class="btn btn--ghost" type="button">No thanks</button>
+      </div>
+    </aside>
+    <p id="watch-msg" class="view-note" hidden></p>
 
     <!-- Shown when no one is signed in -->
 <section id="signin-panel" class="signin" hidden>
@@ -314,6 +325,10 @@
             <span id="cycle-day" class="counter__value">—</span>
             <p id="cycle-hint" class="hint"></p>
           </div>
+          <p id="cycle-phase" class="cycle-phase" hidden>
+            <strong id="cycle-phase-name"></strong>
+            <span id="cycle-phase-note"></span>
+          </p>
           <form id="cycle-form" class="cycle-form" novalidate>
             <label class="field">
               <span>Period started on</span>
@@ -369,6 +384,11 @@
           <p class="hint">Once a day, unless you've already reached your workout goal.</p>
         </div>
       </div>
+      <div id="rem-cycle" class="log-block" hidden>
+        <span class="block-label">Cycle updates</span>
+        <ul id="rem-cycle-list" class="link-list"></ul>
+        <p class="hint">A notification when their cycle phase changes, with how they may be feeling. Sent between 9 AM and 9 PM.</p>
+      </div>
       <p id="rem-msg" class="hint" aria-live="polite"></p>
       <div>
         <button id="rem-test" class="btn btn--ghost btn--small" type="button" hidden>Show a test notification</button>
@@ -389,7 +409,7 @@
             <p class="hint">Sharing is off. Nobody else can see your log.</p>
             <button id="share-create" class="btn btn--fit" type="button">Create share code</button>
             <div id="share-cycle-ask" class="confirm" hidden>
-              <p><strong>Share your cycle tracker too?</strong> People with your code will see your steps, water, sleep, workouts and food. Choose whether they also see your period dates.</p>
+              <p><strong>Share your cycle tracker too?</strong> People with your code will see your steps, water, sleep, workouts and food. Choose whether they also see your cycle tracker. If you share it, they can also choose to get a notification when your cycle phase changes.</p>
               <div class="row">
                 <button id="share-cycle-yes" class="btn" type="button">Yes, share it</button>
                 <button id="share-cycle-no" class="btn btn--ghost" type="button">No, keep it private</button>
@@ -532,13 +552,13 @@
   </nav>
 
   <footer class="site-footer">
-    <p>Health Log · version <span id="app-version">23</span> · <a href="privacy.html">Privacy policy</a></p>
+    <p>Health Log · version <span id="app-version">24</span> · <a href="privacy.html">Privacy policy</a></p>
   </footer>
 
   <!-- Goal celebrations -->
   <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <script type="module" src="app.js?v=23"></script>
+  <script type="module" src="app.js?v=24"></script>
 </body>
 </html>

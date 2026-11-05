@@ -15,7 +15,8 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=23";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=24";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=24";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -197,7 +198,12 @@ function firestoreStore(db, uid) {
       (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
       (err) => onError?.(err)),
     saveSharing: (code, shareCycle = false) => mergeUser({ shareCode: code, shareCycle }),
-    saveLinks: (people) => mergeUser({ links: people }),
+    // cycleWatchOn tells the reminder job to check this person's cycle updates
+    saveLinks: (people, device) => mergeUser({
+      links: people,
+      cycleWatchOn: people.some((p) => p.cycleUpdates),
+      ...(device ? { pushTokens: arrayUnion(device) } : {}),
+    }),
 
     // Copies kept for people you share with
     mirrorDay: (code, log) => setDoc(shareDayRef(code, log.date), log),
@@ -398,6 +404,10 @@ const el = {
   groupCount: $("group-count"), groupNote: $("group-note"), groupMembers: $("group-members"), groupInvite: $("group-invite-code"),
   groupCopy: $("group-copy"), groupLeave: $("group-leave"), groupLeaveConfirm: $("group-leave-confirm"), groupLeaveText: $("group-leave-text"),
   groupLeaveYes: $("group-leave-yes"), groupLeaveNo: $("group-leave-no"), groupMsg: $("group-msg"),
+  watchAsk: $("watch-ask"), watchAskTitle: $("watch-ask-title"), watchAskText: $("watch-ask-text"),
+  watchYes: $("watch-yes"), watchNo: $("watch-no"), watchMsg: $("watch-msg"),
+  cyclePhaseBox: $("cycle-phase"), cyclePhaseName: $("cycle-phase-name"), cyclePhaseNote: $("cycle-phase-note"),
+  remCycle: $("rem-cycle"), remCycleList: $("rem-cycle-list"),
   tabbar: $("tabbar"), tabPeriod: $("tab-period"), periodPanel: $("period-panel"),
   installTip: $("install-tip"), installText: $("install-text"), installBtn: $("install-btn"), installClose: $("install-close"),
   linkForm: $("link-form"), linkCode: $("link-code"), linkMsg: $("link-msg"), linkList: $("link-list"),
@@ -480,6 +490,14 @@ function render() {
   el.remPanel.hidden = !on("reminders") || !!blocked;
   if (me) el.accountEmail.textContent = me.email;
   el.people.hidden = !(on("today") || on("cycle")) || links.length === 0;
+  const viewedLink = viewing ? links.find((l) => l.code === viewing) : null;
+  el.watchAsk.hidden = !(on("today") || on("cycle")) || !viewedLink || !viewCycle || viewedLink.cycleAsked === true;
+  if (!el.watchAsk.hidden) {
+    const n = viewName || viewedLink.name || "They";
+    el.watchAskTitle.textContent = `Get cycle updates for ${n}?`;
+    el.watchAskText.textContent = `${n} shares their cycle tracker with you. You'll get a notification when their cycle phase changes, with how they may be feeling and ways to support them.`;
+  }
+  el.watchMsg.hidden = !(on("today") || on("cycle")) || !el.watchMsg.textContent;
   if (signedOut || !store) return;
 
   renderPeople();
@@ -519,7 +537,7 @@ function renderLinkPanel() {
   el.shareCycleSetting.hidden = !(on && isFemale());
   if (on && isFemale()) {
     el.shareCycleState.textContent = sharing.cycle
-      ? "Cycle tracker: shared with people who have your code."
+      ? "Cycle tracker: shared with people who have your code. They can choose to get phase updates."
       : "Cycle tracker: private. People with your code don't see it.";
     el.shareCycleToggle.textContent = sharing.cycle ? "Stop sharing cycle tracker" : "Share cycle tracker too";
   }
@@ -887,6 +905,15 @@ function renderCycle() {
         : `of your cycle · next period was expected around ${shortDate(next)} (${-until} day${until === -1 ? "" : "s"} ago)`;
   }
   if (viewing && !last && !starts.length) el.cycleHint.textContent = "No periods logged yet.";
+
+  const ph = cyclePhase(cycle, todayISO());
+  el.cyclePhaseBox.hidden = !ph;
+  if (ph) {
+    el.cyclePhaseName.textContent = PHASES[ph.phase].name;
+    el.cyclePhaseNote.textContent = ph.phase === "late" && !viewing
+      ? "Your next period is due around now."
+      : PHASES[ph.phase].note;
+  }
 
   el.cycleDate.max = todayISO();
   if (!el.cycleDate.value) el.cycleDate.value = todayISO();
@@ -1332,6 +1359,7 @@ async function unlink(code) {
 let unwatchViewProfile = null;
 function viewPerson(code) {
   if (viewing === code) return;
+  el.watchMsg.textContent = "";
   viewing = code;
   viewGone = false;
   if (unwatchViewProfile) { unwatchViewProfile(); unwatchViewProfile = null; }
@@ -1575,6 +1603,7 @@ const remNotes = {
 
 function renderReminders() {
   if (el.remPanel.hidden) return;
+  renderCycleUpdates();
   const r = remindersNow();
   const ok = pushState === "ok";
   el.remNote.hidden = ok || pushState === "checking";
@@ -2058,6 +2087,79 @@ async function leaveCurrentGroup() {
   } finally {
     el.groupLeaveYes.disabled = false;
     render();
+  }
+}
+
+// ---------- Cycle updates (for people someone shares their cycle tracker with) ----------
+async function setCycleUpdates(code, on) {
+  const person = links.find((l) => l.code === code);
+  const n = person?.name || "them";
+  let device = null;
+  let note = "";
+  if (on) {
+    if (pushState === "ok") {
+      try {
+        device = await deviceToken();
+      } catch (err) {
+        on = false;
+        note = err?.code === "denied"
+          ? (isIOSDevice()
+            ? "Notifications are off for Health Log. Turn them on in Settings, Notifications, Health Log, then try again from the Reminders page."
+            : "Notifications are blocked for this site. Allow them in your browser's site settings, then try again from the Reminders page.")
+          : "Couldn't turn on notifications on this device. Try again from the Reminders page.";
+      }
+    } else {
+      note = pushState === "needs-install"
+        ? `Cycle updates for ${n} are on. To receive them, open Health Log from your Home Screen, go to Reminders and switch them on there once.`
+        : `Cycle updates for ${n} are on, but this browser can't show notifications.`;
+    }
+  }
+  links = links.map((l) => (l.code === code ? { ...l, cycleUpdates: on, cycleAsked: true } : l));
+  render();
+  try {
+    await store.saveLinks(links, device);
+    if (!note) note = on ? `You'll get a notification when ${n}'s cycle phase changes.` : `Cycle updates for ${n} are off.`;
+  } catch {
+    note = "Couldn't save that. Check your connection and try again.";
+  }
+  return note;
+}
+
+el.watchYes.addEventListener("click", async () => {
+  if (!viewing) return;
+  el.watchMsg.textContent = await setCycleUpdates(viewing, true);
+  render();
+});
+el.watchNo.addEventListener("click", async () => {
+  if (!viewing) return;
+  el.watchMsg.textContent = await setCycleUpdates(viewing, false);
+  el.watchMsg.textContent += " You can turn them on any time on the Reminders page.";
+  render();
+});
+
+function renderCycleUpdates() {
+  const list = links.filter((l) => l.cycleAsked || l.cycleUpdates);
+  el.remCycle.hidden = !list.length;
+  el.remCycleList.replaceChildren();
+  for (const l of list) {
+    const li = document.createElement("li");
+    const row = document.createElement("label");
+    row.className = "switch-row switch-row--list";
+    const name = document.createElement("span");
+    name.textContent = l.name || "Linked person";
+    const sw = document.createElement("input");
+    sw.type = "checkbox";
+    sw.className = "switch";
+    sw.setAttribute("role", "switch");
+    sw.checked = !!l.cycleUpdates;
+    sw.setAttribute("aria-label", `Cycle updates for ${l.name || "this person"}`);
+    sw.addEventListener("change", async () => {
+      el.remMsg.textContent = await setCycleUpdates(l.code, sw.checked);
+      render();
+    });
+    row.append(name, sw);
+    li.append(row);
+    el.remCycleList.append(li);
   }
 }
 
