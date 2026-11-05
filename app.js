@@ -15,9 +15,9 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=31";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=31";
-import { KINDS, VIDEOS, PLANS } from "./workouts.js?v=31";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=32";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=32";
+import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS } from "./workouts.js?v=32";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -2083,9 +2083,40 @@ function weekStrip(plan) {
   return week;
 }
 
+// Plans offered to this person: women get Cycle Sync first, men get strength splits,
+// and anyone who chose "Prefer not to say" sees every plan except Cycle Sync.
+function plansForMe() {
+  const g = profile?.gender;
+  const list = PLANS.filter((p) => p.for === "all" ||
+    (g === "female" && p.for === "female") ||
+    (g === "male" && p.for === "male") ||
+    (g !== "female" && g !== "male" && p.id !== "cycle"));
+  return list;
+}
+
+function pickVideo(kind, n) {
+  const options = VIDEOS.filter((v) => v.kind === kind);
+  return options.length ? options[((n % options.length) + options.length) % options.length] : null;
+}
+
+function phaseStrip(phase) {
+  const strip = document.createElement("div");
+  strip.className = "week week--phases";
+  for (const [k, label] of [["menstrual", "Period"], ["follicular", "Follicular"], ["ovulation", "Ovulation"], ["luteal", "Luteal"]]) {
+    const cell = document.createElement("span");
+    if (k === phase || (phase === "late" && k === "luteal")) cell.className = "is-today";
+    const b = document.createElement("b");
+    b.textContent = label;
+    cell.append(b, document.createTextNode(PHASE_WORKOUTS[k].map((x) => KINDS[x].short).filter((x, i, a) => a.indexOf(x) === i).slice(0, 4).join(", ")));
+    strip.append(cell);
+  }
+  return strip;
+}
+
 function renderWorkoutsPage() {
   if (el.workoutsPanel.hidden) return;
-  const current = PLANS.find((p) => p.id === profile?.plan) || null;
+  const offered = plansForMe();
+  const current = offered.find((p) => p.id === profile?.plan) || null;
 
   // Today's workout from your plan
   el.planToday.hidden = false;
@@ -2095,8 +2126,36 @@ function renderWorkoutsPage() {
     h.textContent = "Today's workout";
     const p = document.createElement("p");
     p.className = "hint";
-    p.textContent = "Choose a weekly plan below and you'll get a workout here every day.";
+    p.textContent = profile?.gender === "female"
+      ? "Try Cycle Sync below: your workouts will follow your cycle phase."
+      : profile?.gender === "male"
+        ? "Choose a plan below, like the Upper / Lower Split, and you'll get a workout here every day."
+        : "Choose a weekly plan below and you'll get a workout here every day.";
     el.planToday.append(h, p);
+  } else if (current.phased) {
+    const ph = cyclePhase(profile?.cycle, todayISO());
+    if (!ph) {
+      h.textContent = "Today: a gentle walk";
+      const p = document.createElement("p");
+      p.className = "hint";
+      p.textContent = "Log the day your last period started on the Cycle page and your workouts will follow your cycle.";
+      const go = document.createElement("a");
+      go.href = "#cycle";
+      go.className = "btn btn--small btn--fit";
+      go.textContent = "Go to Cycle";
+      el.planToday.append(h, p, go, videoCard(pickVideo("walk", dayIndex())));
+    } else {
+      const list = PHASE_WORKOUTS[ph.phase];
+      const n = diffDays(ph.since, todayISO());
+      const kind = list[n % list.length];
+      h.textContent = `${PHASES[ph.phase].name} · ${KINDS[kind].label}`;
+      const tip = document.createElement("p");
+      tip.className = "hint";
+      tip.textContent = `Cycle day ${ph.day}. ${PHASE_TIPS[ph.phase]}`;
+      el.planToday.append(h, tip, phaseStrip(ph.phase));
+      const v = pickVideo(kind, Math.floor(n / list.length));
+      if (v) el.planToday.append(videoCard(v));
+    }
   } else {
     const kind = current.week[dayIndex()];
     h.textContent = kind === "rest" ? "Today: rest day" : `Today: ${KINDS[kind].label}`;
@@ -2107,15 +2166,15 @@ function renderWorkoutsPage() {
       : `${current.name} plan. Press play, then log it to earn points.`;
     el.planToday.append(h, sub, weekStrip(current));
     if (kind !== "rest") {
-      const options = VIDEOS.filter((v) => v.kind === kind);
       const weekNo = Math.floor(fromISO(todayISO()).getTime() / (7 * 86400000));
-      el.planToday.append(videoCard(options[(weekNo + dayIndex()) % options.length]));
+      const v = pickVideo(kind, weekNo + dayIndex());
+      if (v) el.planToday.append(videoCard(v));
     }
   }
 
   // Plans
   el.planList.replaceChildren();
-  for (const plan of PLANS) {
+  for (const plan of offered) {
     const card = document.createElement("article");
     card.className = "plan" + (current?.id === plan.id ? " is-current" : "");
     const name = document.createElement("h4");
@@ -2139,7 +2198,7 @@ function renderWorkoutsPage() {
       if (next) window.scrollTo({ top: 0, behavior: "smooth" });
       try { await store.saveProfile({ plan: next }); } catch (err) { handleWriteError(err); }
     });
-    card.append(name, meta, about, weekStrip(plan), btn);
+    card.append(name, meta, about, plan.phased ? phaseStrip(cyclePhase(profile?.cycle, todayISO())?.phase) : weekStrip(plan), btn);
     el.planList.append(card);
   }
 

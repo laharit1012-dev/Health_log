@@ -56,7 +56,13 @@ When someone views a person who shares their cycle tracker, they're asked once: 
 
 ## Workouts
 
-The **Workouts** tab has four weekly plans (Walk More, Strong at Home, Yoga & Flexibility, Cardio Boost) and a library of beginner-friendly YouTube videos (walking, strength, yoga, cardio, stretching), listed in `workouts.js`. Start a plan to get today's workout with a video at the top. **Log it** adds the workout to Today, which earns points.
+The **Workouts** tab offers weekly plans and a library of beginner-friendly YouTube videos (walking, full body, upper body, lower body, core, cardio, Pilates, yoga, period yoga, stretching), listed in `workouts.js`. Start a plan to get today's workout with a video at the top; **Log it** adds the workout to Today, which earns points.
+
+- **Women:** **Cycle Sync** (shown first) picks today's workout from her cycle phase. Period: gentle yoga, walks and stretching. Follicular: strength, upper and lower body, cardio. Ovulation: cardio, strength, lower body. Luteal: Pilates, core, walks, yoga. Without a logged period it suggests a walk and asks her to log one on the Cycle page. Strong at Home, Walk More, Yoga & Flexibility and Cardio Boost are also offered.
+- **Men:** Upper / Lower Split, Full Body Strength and Core & Cardio (shown first), plus Walk More, Yoga & Flexibility and Cardio Boost.
+- **Prefer not to say:** every plan except Cycle Sync.
+
+Phase advice is general guidance from how energy often changes through the cycle, not medical advice.
 
 ## Steps from Apple Health (iPhone)
 
