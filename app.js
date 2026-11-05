@@ -14,12 +14,12 @@ import {
 import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove, deleteField,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=47";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=47";
-import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=47";
-import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=47";
-import { SHOP, shopItem, shopRegion } from "./shop.js?v=47";
+import { getMessaging, getToken, onMessage, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=48";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=48";
+import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=48";
+import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=48";
+import { SHOP, shopItem, shopRegion } from "./shop.js?v=48";
 
 // ---------- Challenge invites ----------
 // A link like ?invite=christmas-2026&group=K7QF-9XMA-2PDW is kept until the person signs in,
@@ -42,7 +42,7 @@ function clearInvite() { try { localStorage.removeItem(INVITE_KEY); } catch {} }
 
 // ---------- App version and updates ----------
 // Bump APP_VERSION and version.json together when publishing an update.
-const APP_VERSION = 47;
+const APP_VERSION = 48;
 
 // Open the newest version: a unique address makes the phone fetch fresh files
 function reloadFresh() {
@@ -2366,6 +2366,28 @@ function renderReminders() {
   el.remTest.hidden = !(ok && "Notification" in window && Notification.permission === "granted");
 }
 
+// While the app is open on screen, Firebase hands reminders to the page instead of
+// showing them, so show them here: as a system notification and as a message in the app.
+let listeningWhileOpen = false;
+function listenWhileOpen() {
+  if (listeningWhileOpen || !fbApp) return;
+  listeningWhileOpen = true;
+  try {
+    onMessage(getMessaging(fbApp), async (payload) => {
+      const n = payload?.notification || {};
+      const title = n.title || "Health Log";
+      const body = n.body || "";
+      showToast(body ? `${title}: ${body}` : title, "info");
+      try {
+        if (Notification.permission === "granted") {
+          const reg = await navigator.serviceWorker.getRegistration("./");
+          await reg?.showNotification(title, { body, icon: "icons/icon-192.png", badge: "icons/icon-192.png" });
+        }
+      } catch {}
+    });
+  } catch {}
+}
+
 async function deviceToken() {
   if (Notification.permission === "denied") throw { code: "denied" };
   if (Notification.permission !== "granted") {
@@ -2375,6 +2397,7 @@ async function deviceToken() {
   const reg = await navigator.serviceWorker.register("firebase-messaging-sw.js", { scope: "./" });
   const token = await getToken(getMessaging(fbApp), { vapidKey, serviceWorkerRegistration: reg });
   if (!token) throw { code: "no-token" };
+  listenWhileOpen();
   const device = { token, device: deviceName() };
   try { localStorage.setItem(PUSH_KEY, JSON.stringify({ uid: currentUser?.uid, ...device })); } catch {}
   return device;
@@ -4533,6 +4556,6 @@ render();
     start(firestoreStore(db, user.uid, user.emailVerified ? user.email : ""));
     render();
     loadRecent();
-    checkPush().then((state) => { pushState = state; render(); });
+    checkPush().then((state) => { pushState = state; render(); if (state === "ok") listenWhileOpen(); });
   };
 })();
