@@ -289,7 +289,7 @@ const el = {
   signin: $("signin-panel"), summaryPanel: $("summary-panel"), summary: $("summary"),
   panel: $("log-panel"), logTitle: $("log-title"),
   editName: $("edit-name"), renameForm: $("rename-form"), renameInput: $("rename-input"), cancelRename: $("cancel-rename"),
-  renameGender: $("rename-gender"),
+  renameGender: $("rename-gender"), genderPrompt: $("gender-prompt"), genderPromptBtn: $("gender-prompt-btn"),
   cycleSection: $("cycle-section"), cycleScope: $("cycle-scope"), cycleDay: $("cycle-day"), cycleHint: $("cycle-hint"),
   cycleForm: $("cycle-form"), cycleDate: $("cycle-date"), cycleMsg: $("cycle-msg"),
   cycleLength: $("cycle-length"), cycleAvg: $("cycle-avg"), cycleHistory: $("cycle-history"),
@@ -617,6 +617,7 @@ function renderPanel() {
     el.summaryTitle.textContent = `${name}'s day`;
     el.editName.hidden = true;
     el.renameForm.hidden = true;
+    el.genderPrompt.hidden = true;
     el.viewNote.hidden = false;
     el.viewNote.textContent = viewGone
       ? "This person has turned off sharing or changed their code. Ask them for their new code."
@@ -627,9 +628,8 @@ function renderPanel() {
     el.summaryTitle.textContent = "Your day";
     el.editName.hidden = !!blocked || !el.renameForm.hidden;
     el.editName.textContent = name ? "Edit profile" : "Add your name";
-    const needsGender = profile && !profile.gender && el.renameForm.hidden;
-    el.viewNote.hidden = !needsGender;
-    if (needsGender) el.viewNote.textContent = "Tap Edit profile to add your gender. Women also get a private period tracker.";
+    el.viewNote.hidden = true;
+    el.genderPrompt.hidden = !(profile && !profile.gender && el.renameForm.hidden && !blocked);
   }
 
   // Steps
@@ -780,6 +780,11 @@ function closeRename() {
   el.renameForm.hidden = true;
   render();
 }
+
+el.genderPromptBtn.addEventListener("click", () => {
+  el.editName.click();
+  el.renameGender.focus();
+});
 
 el.editName.addEventListener("click", () => {
   el.renameInput.value = displayName();
