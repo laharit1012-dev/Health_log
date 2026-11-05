@@ -44,6 +44,16 @@ service cloud.firestore {
       allow list, write: if isAdmin();
     }
 
+    // Challenge leaderboards: each person's name and challenge points.
+    // Anyone with access can see them; you can only write your own line.
+    match /boards/{challenge}/entries/{uid} {
+      allow read: if request.auth != null && hasAccess(request.auth.uid);
+      allow create, update: if request.auth != null && request.auth.uid == uid && hasAccess(uid)
+        && request.resource.data.name is string && request.resource.data.name.size() <= 60
+        && request.resource.data.points is number;
+      allow delete: if request.auth != null && (request.auth.uid == uid || isAdmin());
+    }
+
     // Email and name, so an admin can find someone who paid.
     match /directory/{uid} {
       allow read: if isAdmin();

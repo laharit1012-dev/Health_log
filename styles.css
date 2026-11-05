@@ -1733,3 +1733,39 @@ body[data-route="today"] .log-panel.is-sheet.is-single,
 .log-panel.is-sheet.is-single { top: auto; max-height: calc(100% - 2.5rem); }
 .log-panel.is-sheet .log-head h2 { flex: 1; min-width: 0; }
 .log-back { font-size: 1.25rem; line-height: 1; padding-inline: 0.75rem; }
+
+/* ---------- Challenge leaderboard ---------- */
+.board .back-link { justify-self: start; font-weight: 700; }
+.board-head { display: flex; align-items: center; gap: 0.875rem; }
+.board-head h2 { margin: 0; }
+.board-head p { margin: 0.125rem 0 0; }
+.board-me {
+  padding: 0.875rem 1rem;
+  border-radius: 1rem;
+  background: linear-gradient(135deg, #0F766E, #0E7490);
+  color: #FFFFFF;
+  font-weight: 700;
+}
+.podium, .board-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.podium:empty, .board-list:empty { display: none; }
+.podium__place, .board-row {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr) auto;
+  grid-template-areas: "rank name points" "rank days points";
+  align-items: center;
+  column-gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  background: var(--surface);
+}
+.podium__place { padding-block: 0.875rem; }
+.podium__place--1 { border-color: #D4A017; box-shadow: 0 0 0 1px #D4A017 inset; }
+.board__rank { grid-area: rank; font-size: 1.5rem; text-align: center; font-weight: 700; }
+.board-row .board__rank { font-size: 1rem; color: var(--muted); }
+.board__name { grid-area: name; font-weight: 700; overflow-wrap: anywhere; }
+.board__points { grid-area: points; font-family: var(--font-display); font-weight: 700; font-size: 1.125rem; }
+.board__days { grid-area: days; color: var(--muted); font-size: 0.8125rem; }
+.podium__place.is-me, .board-row.is-me { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+.board-optin { margin-top: 0.5rem; }
+.challenge-card__links { display: inline-flex; gap: 0.875rem; align-items: center; }

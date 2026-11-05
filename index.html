@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=45">
+  <link rel="stylesheet" href="styles.css?v=46">
 </head>
 <body>
   <!-- Background wallpaper: full on Today, dimmed on the other pages -->
@@ -431,6 +431,27 @@
       <p class="hint">After paying, your access starts within a few hours. Days count automatically from your log. See the <a href="prize-rules.html">prize rules</a> and <a href="refunds.html">refund policy</a>.</p>
     </section>
 
+    <!-- Challenge leaderboard: everyone taking part, most points first -->
+    <section id="board-panel" class="stack board" aria-labelledby="board-title" hidden>
+      <a href="#challenges" class="back-link">‹ Shop</a>
+      <div class="board-head">
+        <span id="board-emoji" class="challenge__emoji" aria-hidden="true"></span>
+        <div>
+          <h2 id="board-title">Leaderboard</h2>
+          <p id="board-sub" class="hint"></p>
+        </div>
+      </div>
+      <div id="board-tabs" class="chips" hidden></div>
+      <div id="board-me" class="board-me" hidden></div>
+      <ol id="board-podium" class="podium"></ol>
+      <ol id="board-list" class="board-list"></ol>
+      <p id="board-empty" class="hint" hidden>No points yet. Log today and be the first on the board!</p>
+      <label class="switch-row board-optin">
+        <span><strong>Show me on leaderboards</strong><br><small class="hint">Others taking part see your name and challenge points, never your logs.</small></span>
+        <input id="board-show" class="switch" type="checkbox" role="switch">
+      </label>
+    </section>
+
     <!-- Admin: give people access (only visible to admins) -->
     <section id="admin-panel" class="link-panel" aria-labelledby="admin-title" hidden>
       <div class="stack stack--tight">
@@ -804,13 +825,13 @@
   </nav>
 
   <footer class="site-footer">
-    <p>Health Log · version <span id="app-version">45</span> · <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a href="refunds.html">Refunds</a> · <a href="prize-rules.html">Prize rules</a></p>
+    <p>Health Log · version <span id="app-version">46</span> · <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a href="refunds.html">Refunds</a> · <a href="prize-rules.html">Prize rules</a></p>
   </footer>
 
   <!-- Goal celebrations -->
   <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <script type="module" src="app.js?v=45"></script>
+  <script type="module" src="app.js?v=46"></script>
 </body>
 </html>

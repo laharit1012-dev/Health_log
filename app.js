@@ -15,11 +15,11 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove, deleteField,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=45";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=45";
-import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=45";
-import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=45";
-import { SHOP, shopItem } from "./shop.js?v=45";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=46";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=46";
+import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=46";
+import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=46";
+import { SHOP, shopItem } from "./shop.js?v=46";
 
 // ---------- Challenge invites ----------
 // A link like ?invite=christmas-2026&group=K7QF-9XMA-2PDW is kept until the person signs in,
@@ -42,7 +42,7 @@ function clearInvite() { try { localStorage.removeItem(INVITE_KEY); } catch {} }
 
 // ---------- App version and updates ----------
 // Bump APP_VERSION and version.json together when publishing an update.
-const APP_VERSION = 45;
+const APP_VERSION = 46;
 
 // Open the newest version: a unique address makes the phone fetch fresh files
 function reloadFresh() {
@@ -216,7 +216,7 @@ function firestoreStore(db, uid, email = "") {
     kind: "account",
     canLink: true,
     watchProfile: (cb, onError) => watch(userRef, (d, m) => cb(d
-      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null, groups: Array.isArray(d.groups) ? d.groups : [], xpDays: d.xpDays || {}, badges: d.badges || {}, plan: d.plan || null, equip: d.equip || "bodyweight", challenges: Array.isArray(d.challenges) ? d.challenges : [], sessions: d.sessions || null, fast: d.fast || null }
+      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null, groups: Array.isArray(d.groups) ? d.groups : [], xpDays: d.xpDays || {}, badges: d.badges || {}, plan: d.plan || null, equip: d.equip || "bodyweight", challenges: Array.isArray(d.challenges) ? d.challenges : [], sessions: d.sessions || null, fast: d.fast || null, boardHidden: d.boardHidden === true }
       : null, m), onError),
     watchSharing: (cb, onError) => watch(userRef, (d, m) => cb(d?.shareCode ? { code: d.shareCode, cycle: !!d.shareCycle } : null, m), onError),
     watchLinks: (cb, onError) => watch(userRef, (d, m) => cb({ people: Array.isArray(d?.links) ? d.links : [] }, m), onError),
@@ -291,6 +291,7 @@ function firestoreStore(db, uid, email = "") {
       const snap = await getDocs(collection(db, "users", uid, "days"));
       for (const d of snap.docs) await deleteDoc(d.ref);
       await deleteDoc(doc(db, "directory", uid)).catch(() => {});
+      for (const c of CHALLENGES) await deleteDoc(doc(db, "boards", c.id, "entries", uid)).catch(() => {});
       await deleteDoc(userRef);
     },
     async removeCopies(code) {
@@ -323,6 +324,12 @@ function firestoreStore(db, uid, email = "") {
         : () => {};
       return () => { u1(); u2(); };
     },
+    // Challenge leaderboards: boards/<challenge>/entries/<uid> { name, points, count, target, done }
+    watchBoard: (id, cb, onError) => onSnapshot(collection(db, "boards", id, "entries"),
+      (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      (err) => onError?.(err)),
+    saveBoardEntry: (id, data) => setDoc(doc(db, "boards", id, "entries", uid), data),
+    removeBoardEntry: (id) => deleteDoc(doc(db, "boards", id, "entries", uid)),
     // Up to 2 devices per account: { deviceId: { name, at } }
     saveSessions: (sessions) => mergeUser({ sessions }),
     // directory/<uid> { email, name } lets an admin find someone by email
@@ -560,6 +567,9 @@ const el = {
   adminPanel: $("admin-panel"), adminLink: $("admin-link"), remLink: document.querySelector('#account-panel a[href="#reminders"]'),
   adminFind: $("admin-find"), adminEmail: $("admin-email"), adminPerson: $("admin-person"), adminPersonName: $("admin-person-name"),
   adminPass: $("admin-pass"), adminStart: $("admin-start"), adminEnd: $("admin-end"), adminGrant: $("admin-grant"),
+  boardPanel: $("board-panel"), boardEmoji: $("board-emoji"), boardTitle: $("board-title"), boardSub: $("board-sub"),
+  boardTabs: $("board-tabs"), boardMe: $("board-me"), boardPodium: $("board-podium"), boardList: $("board-list"),
+  boardEmpty: $("board-empty"), boardShow: $("board-show"),
   adminMsg: $("admin-msg"), adminList: $("admin-list"), adminBoardCh: $("admin-board-ch"), adminBoard: $("admin-board"),
   fastActive: $("fast-active"), fastElapsed: $("fast-elapsed"), fastGoal: $("fast-goal"), fastBar: $("fast-bar"),
   fastWhen: $("fast-when"), fastEnd: $("fast-end"), fastCancel: $("fast-cancel"), fastForm: $("fast-form"),
@@ -590,10 +600,12 @@ function setValue(input, value) {
 const caloriesOf = (log) => log.foods.reduce((sum, f) => sum + (Number(f.calories) || 0), 0);
 
 // ---------- Pages ----------
-const ROUTES = ["today", "cycle", "workouts", "family", "reminders", "account", "challenges", "admin"];
+const ROUTES = ["today", "cycle", "workouts", "family", "reminders", "account", "challenges", "admin", "board"];
+let boardId = null;        // challenge shown on the leaderboard page (#board/<id>)
 const routeFromHash = () => {
   let r = location.hash.replace("#", "");
   if (r === "period") r = "cycle"; // older links
+  if (r.startsWith("board/")) { boardId = decodeURIComponent(r.slice(6)); r = "board"; }
   return ROUTES.includes(r) ? r : "today";
 };
 let route = routeFromHash();
@@ -691,6 +703,7 @@ function render() {
   el.periodPanel.hidden = !on("cycle");
   el.workoutsPanel.hidden = !on("workouts");
   el.challengesPanel.hidden = !on("challenges");
+  el.boardPanel.hidden = !on("board");
   el.linkPanel.hidden = !on("family") || !store?.canLink || !!blocked;
   el.groupsPanel.hidden = !on("family") || !store?.canLink || !!blocked;
   el.accountPanel.hidden = !on("account");
@@ -718,6 +731,7 @@ function render() {
   renderProgress();
   renderWorkoutsPage();
   renderChallenges();
+  renderBoard();
   renderAdmin();
   renderPanel();
   if (logSheet && logSection && !viewing) {
@@ -1870,6 +1884,7 @@ function start(s) {
     profileSeen = true;
     checkKicked(p);
     registerDevice();
+    syncDirectory(); // waits a moment, so only one write even if several things change
     // Keep the admin's search list current (email + name only)
     if (store.saveDirectory && me?.email && (!listed || p?.name !== listed)) {
       listed = p?.name || "";
@@ -1877,7 +1892,7 @@ function start(s) {
     }
   }, () => {});
   if (store.watchAccess) {
-    store.watchAccess((d) => { accessDoc = d; accessKnown = true; accessOpen = false; render(); processInvite(); }, (err) => {
+    store.watchAccess((d) => { accessDoc = d; accessKnown = true; accessOpen = false; render(); processInvite(); syncDirectory(); }, (err) => {
       // Rules not updated yet (or another problem): never lock people out because of it
       accessKnown = true;
       accessOpen = true;
@@ -2895,6 +2910,7 @@ async function setChallenge(id, join) {
   if (join) { showToast(`You joined the ${c.name}! ${c.emoji}`, "goal"); burstConfetti(); }
   try {
     await store.saveProfile({ challenges: list });
+    if (!join) { store.removeBoardEntry?.(id).catch(() => {}); delete boardWritten[id]; }
     syncGroups();
     updateProgress(null, { quiet: true });
   } catch (err) { handleWriteError(err); }
@@ -2947,10 +2963,13 @@ function renderChallenges() {
       head.className = "challenge-card__head";
       const t = document.createElement("strong");
       t.textContent = active.length === 1 ? "Your challenge" : "Your challenges";
+      const links = document.createElement("span");
+      links.className = "challenge-card__links";
       const all = document.createElement("a");
       all.href = "#challenges";
       all.textContent = "Shop ›";
-      head.append(t, all);
+      links.append(boardLink(active[0], "🏆 Leaderboard", ""), all);
+      head.append(t, links);
       el.challengeCard.append(head);
       for (const c of active) {
         const st = challengeStatus(c);
@@ -3059,6 +3078,7 @@ function renderChallenges() {
     const fill = document.createElement("span"); fill.style.width = Math.min(100, (st.count / st.target) * 100) + "%";
     meter.append(fill);
     const actions = document.createElement("div"); actions.className = "row";
+    if (st.joined) actions.append(boardLink(c));
     if (st.joined && !st.ended && !blocked) actions.append(inviteButton(c));
     if (free && !st.joined && !st.ended) {
       const b = document.createElement("button"); b.type = "button"; b.className = "btn btn--small"; b.textContent = "Join";
@@ -3085,6 +3105,107 @@ function renderChallenges() {
     el.challengeList.append(card);
   }
 }
+
+// ---------- Challenge leaderboard page ----------
+let boardUnwatch = null;
+let boardWatching = null;
+let boardRows = null;
+
+const boardLink = (c, text = "🏆 Leaderboard", cls = "btn btn--ghost btn--small") => {
+  const a = document.createElement("a");
+  a.href = "#board/" + encodeURIComponent(c.id);
+  a.className = cls;
+  a.textContent = text;
+  return a;
+};
+
+function renderBoard() {
+  if (el.boardPanel.hidden) {
+    if (boardUnwatch) { boardUnwatch(); boardUnwatch = null; boardWatching = null; }
+    return;
+  }
+  const mine = CHALLENGES.filter((c) => challengeStatus(c).joined);
+  const c = CHALLENGES.find((x) => x.id === boardId) || mine[0] || CHALLENGES[0];
+  boardId = c.id;
+  if (boardWatching !== c.id && store?.watchBoard) {
+    if (boardUnwatch) boardUnwatch();
+    boardRows = null;
+    boardWatching = c.id;
+    boardUnwatch = store.watchBoard(c.id, (rows) => { boardRows = rows; render(); }, () => { boardRows = []; render(); });
+  }
+  const st = challengeStatus(c);
+  el.boardEmoji.textContent = c.emoji;
+  el.boardTitle.textContent = c.name;
+  el.boardSub.textContent = `${challengeDates(c)} · ${SHOP.prize}`;
+
+  // Switch between your challenges
+  el.boardTabs.hidden = mine.length < 2;
+  el.boardTabs.replaceChildren();
+  for (const m of mine) {
+    const a = document.createElement("a");
+    a.className = "chip";
+    a.href = "#board/" + encodeURIComponent(m.id);
+    a.textContent = `${m.emoji} ${m.name}`;
+    a.setAttribute("aria-pressed", String(m.id === c.id));
+    el.boardTabs.append(a);
+  }
+
+  const rows = [...(boardRows || [])].sort((a, b) => (b.points || 0) - (a.points || 0) || (b.count || 0) - (a.count || 0));
+  const myIndex = rows.findIndex((r) => r.id === store?.uid);
+
+  // Where you stand
+  el.boardMe.hidden = boardRows === null;
+  if (profile?.boardHidden) el.boardMe.textContent = "You're hidden from leaderboards. Turn on \"Show me\" below to compete.";
+  else if (!st.joined) el.boardMe.textContent = "You're not in this challenge yet. Join it in the Shop to get on the board.";
+  else if (myIndex < 0) el.boardMe.textContent = "Your points appear here after your next log. Let's go!";
+  else {
+    const me = rows[myIndex];
+    const ahead = myIndex > 0 ? rows[myIndex - 1] : null;
+    el.boardMe.textContent = myIndex === 0
+      ? `You're #1 of ${rows.length} with ${fmt(me.points || 0)} points! 👑 Keep it up.`
+      : `You're #${myIndex + 1} of ${rows.length} with ${fmt(me.points || 0)} points. ${fmt((ahead.points || 0) - (me.points || 0) + 1)} more to pass ${ahead.name || "the next person"}!`;
+  }
+
+  // Top 3 and everyone else
+  const medal = ["🥇", "🥈", "🥉"];
+  el.boardPodium.replaceChildren();
+  el.boardList.replaceChildren();
+  rows.slice(0, 100).forEach((r, i) => {
+    const li = document.createElement("li");
+    const isMe = r.id === store?.uid;
+    li.className = (i < 3 ? "podium__place podium__place--" + (i + 1) : "board-row") + (isMe ? " is-me" : "");
+    const rank = document.createElement("span");
+    rank.className = "board__rank";
+    rank.textContent = i < 3 ? medal[i] : String(i + 1);
+    const name = document.createElement("span");
+    name.className = "board__name";
+    name.textContent = (r.name || "Someone") + (isMe ? " (you)" : "");
+    const pts = document.createElement("span");
+    pts.className = "board__points";
+    pts.textContent = `${fmt(r.points || 0)} pts`;
+    const days = document.createElement("small");
+    days.className = "board__days";
+    days.textContent = r.done ? "Completed 🎉" : `${r.count || 0}/${r.target || 0} days`;
+    li.append(rank, name, pts, days);
+    (i < 3 ? el.boardPodium : el.boardList).append(li);
+  });
+  el.boardEmpty.hidden = boardRows === null || rows.length > 0;
+  el.boardShow.checked = !profile?.boardHidden;
+  el.boardShow.disabled = !!blocked;
+}
+
+el.boardShow.addEventListener("change", async () => {
+  const hidden = !el.boardShow.checked;
+  profile = { ...(profile || {}), boardHidden: hidden };
+  render();
+  try {
+    await store.saveProfile({ boardHidden: hidden });
+    for (const k of Object.keys(boardWritten)) delete boardWritten[k];
+    if (hidden) {
+      for (const c of CHALLENGES) if (challengeStatus(c).joined) await store.removeBoardEntry(c.id).catch(() => {});
+    } else syncDirectory();
+  } catch (err) { handleWriteError(err); }
+});
 
 // ---------- Inviting friends to a challenge ----------
 // Each challenge you invite people to gets its own group, so you can see who's winning.
@@ -3284,7 +3405,7 @@ function renderAdmin() {
     for (const c of CHALLENGES) el.adminBoardCh.add(new Option(`${c.emoji} ${c.name}`, c.id));
   }
   if (adminRows === null) { loadAdminList(); return; }
-  renderBoard();
+  renderPrizeBoard();
   el.adminList.replaceChildren();
   const rows = [...adminRows].sort((a, b) => (b.grantedAt || 0) - (a.grantedAt || 0));
   if (!rows.length) {
@@ -3333,7 +3454,7 @@ async function loadDirectory() {
   render();
 }
 
-function renderBoard() {
+function renderPrizeBoard() {
   if (adminDir === null) { adminDir = []; loadDirectory(); return; }
   const id = el.adminBoardCh.value;
   const c = CHALLENGES.find((x) => x.id === id);
@@ -3488,8 +3609,25 @@ function syncDirectory() {
   if (!store?.saveDirectory || !recentLogs || !profile || !me?.email) return;
   clearTimeout(directoryTimer);
   directoryTimer = setTimeout(() => {
-    store.saveDirectory(me.email, displayName(), { ch: memberData().ch }).catch(() => {});
+    const ch = memberData().ch;
+    store.saveDirectory(me.email, displayName(), { ch }).catch(() => {});
+    syncBoards(ch);
   }, 3000);
+}
+
+// Your line on each leaderboard you're part of (only when it changed, and only with access)
+const boardWritten = {};
+function syncBoards(ch) {
+  if (!store?.saveBoardEntry || locked() || accessNow() === "checking" || profile?.boardHidden) return;
+  for (const c of CHALLENGES) {
+    const e = ch[c.id];
+    if (!e) continue;
+    const data = { name: displayName() || "Someone", points: e.p || 0, count: e.c || 0, target: e.t || 0, done: !!e.done };
+    const key = JSON.stringify(data);
+    if (boardWritten[c.id] === key) continue;
+    boardWritten[c.id] = key;
+    store.saveBoardEntry(c.id, { ...data, updatedAt: Date.now() }).catch(() => { delete boardWritten[c.id]; });
+  }
 }
 
 function syncGroups() {
