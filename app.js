@@ -15,7 +15,7 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=13";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=14";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
