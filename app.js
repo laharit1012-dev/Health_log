@@ -15,11 +15,11 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove, deleteField,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=44";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=44";
-import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=44";
-import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=44";
-import { SHOP, shopItem } from "./shop.js?v=44";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=45";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=45";
+import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=45";
+import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=45";
+import { SHOP, shopItem } from "./shop.js?v=45";
 
 // ---------- Challenge invites ----------
 // A link like ?invite=christmas-2026&group=K7QF-9XMA-2PDW is kept until the person signs in,
@@ -42,7 +42,7 @@ function clearInvite() { try { localStorage.removeItem(INVITE_KEY); } catch {} }
 
 // ---------- App version and updates ----------
 // Bump APP_VERSION and version.json together when publishing an update.
-const APP_VERSION = 44;
+const APP_VERSION = 45;
 
 // Open the newest version: a unique address makes the phone fetch fresh files
 function reloadFresh() {
@@ -565,6 +565,8 @@ const el = {
   fastWhen: $("fast-when"), fastEnd: $("fast-end"), fastCancel: $("fast-cancel"), fastForm: $("fast-form"),
   fastPlan: $("fast-plan"), fastStart: $("fast-start"), fastWarn: $("fast-warn"), fastWarnYes: $("fast-warn-yes"),
   fastWarnNo: $("fast-warn-no"), fastMsg: $("fast-msg"), fastList: $("fast-list"), fastTotal: $("fast-total"),
+  quick: $("quick-sheet"), quickClose: $("quick-close"), quickAll: $("quick-all"), quickCycle: $("quick-cycle"),
+  logBack: $("log-back"),
   fab: $("log-fab"), logClose: $("log-close"), backdrop: $("sheet-backdrop"), inviteNote: $("invite-note"),
   groupChallenges: $("group-challenges"),
   tabbar: $("tabbar"), tabPeriod: $("tab-period"), periodPanel: $("period-panel"),
@@ -604,6 +606,8 @@ function goTo(r) {
 window.addEventListener("hashchange", () => {
   route = routeFromHash();
   logSheet = false;
+  quickSheet = false;
+  logSection = null;
   if (route !== "family" && openGroup) closeGroupView();
   if (route !== "workouts") playing = null;
   render();
@@ -612,7 +616,9 @@ window.addEventListener("hashchange", () => {
 
 // ---------- Rendering ----------
 let signedOut = false;
-let logSheet = false;      // the log sheet (opened with +) is showing
+let logSheet = false;      // the log sheet is showing
+let quickSheet = false;    // the quick actions (opened with +) are showing
+let logSection = null;     // the one part of the log being shown, or null for all of it
 
 function render() {
   el.dayTitle.textContent = dayTitle(date);
@@ -666,13 +672,22 @@ function render() {
   el.badgesPanel.hidden = !on("today") || !!viewing;
   // Your own log opens as a sheet from the + button; someone else's log shows in the page
   const sheet = on("today") && !viewing && logSheet;
+  const quick = on("today") && !viewing && quickSheet && !logSheet;
   el.panel.hidden = !on("today") || (!viewing && !logSheet);
   el.panel.classList.toggle("is-sheet", sheet);
+  el.panel.classList.toggle("is-single", sheet && !!logSection);
   el.panel.setAttribute("role", sheet ? "dialog" : "region");
   el.logClose.hidden = !!viewing;
-  el.fab.hidden = !on("today") || !!viewing || sheet;
-  el.backdrop.hidden = !sheet;
-  document.body.classList.toggle("sheet-open", sheet);
+  el.logBack.hidden = !sheet || !logSection;
+  // One section at a time when opened from the quick actions
+  for (const part of el.panel.querySelectorAll("[data-section]")) {
+    part.hidden = sheet && !!logSection && part.dataset.section !== logSection;
+  }
+  el.quick.hidden = !quick;
+  el.quickCycle.hidden = !isFemale();
+  el.fab.hidden = !on("today") || !!viewing || sheet || quick;
+  el.backdrop.hidden = !sheet && !quick;
+  document.body.classList.toggle("sheet-open", sheet || quick);
   el.periodPanel.hidden = !on("cycle");
   el.workoutsPanel.hidden = !on("workouts");
   el.challengesPanel.hidden = !on("challenges");
@@ -705,7 +720,12 @@ function render() {
   renderChallenges();
   renderAdmin();
   renderPanel();
+  if (logSheet && logSection && !viewing) {
+    el.logTitle.textContent = SECTION_TITLES[logSection] || el.logTitle.textContent;
+    el.editName.hidden = true;
+  }
   renderFasting();
+  renderQuick();
   renderLinkPanel();
   setStatus();
 }
@@ -776,6 +796,8 @@ function renderSummary() {
   const addStat = (label, value, unit, isMet) => {
     const wrap = document.createElement("div");
     wrap.className = "stat" + (isMet ? " is-met" : "");
+    const section = { Steps: "steps", Water: "water", Sleep: "sleep", Workouts: "workout", Food: "food", Fasting: "fast", Fasted: "fast", Cycle: "cycle" }[label];
+    if (section) wrap.dataset.section = section;
     const dt = document.createElement("dt");
     dt.textContent = label;
     const dd = document.createElement("dd");
@@ -1731,25 +1753,76 @@ el.fastCancel.addEventListener("click", () => {
 // Keep the timer moving while a fast is running
 setInterval(() => { if (profile?.fast && !el.panel.hidden) renderFasting(); }, 30000);
 
-// ---------- The log sheet (+ button on Today) ----------
-function openLog() {
+// ---------- The + button: quick actions, then one part of the log ----------
+const SECTION_TITLES = { steps: "Steps", water: "Water", sleep: "Sleep", workout: "Workouts", food: "Food", fast: "Fasting", goals: "Your goals" };
+
+function openQuick() {
   if (viewing || !store) return;
+  quickSheet = true;
+  logSheet = false;
+  render();
+  el.quickClose.focus({ preventScroll: true });
+}
+
+function openLog(section = null) {
+  if (viewing || !store) return;
+  if (section === "cycle") { closeAll(); goTo("cycle"); return; }
+  logSection = section;
   logSheet = true;
+  quickSheet = false;
   render();
   el.panel.scrollTop = 0;
   el.logClose.focus({ preventScroll: true });
 }
-function closeLog() {
-  if (!logSheet) return;
+
+function closeAll() {
+  if (!logSheet && !quickSheet) return;
   logSheet = false;
+  quickSheet = false;
+  logSection = null;
   render();
   el.fab.focus({ preventScroll: true });
 }
-el.fab.addEventListener("click", openLog);
-el.logClose.addEventListener("click", closeLog);
-el.backdrop.addEventListener("click", closeLog);
-el.summary.addEventListener("click", () => { if (!viewing) openLog(); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeLog(); });
+
+// The small values under each quick action
+function renderQuick() {
+  if (el.quick.hidden) return;
+  const log = logNow();
+  const g = goalsNow();
+  const hours = sleepHours(log.sleep.bed, log.sleep.wake);
+  const mins = workoutMinutes(log);
+  const running = date === todayISO() ? profile?.fast : null;
+  const c = isFemale() ? cycleInfo(profile?.cycle, date) : null;
+  const values = {
+    steps: log.steps != null ? `${fmt(log.steps)} / ${fmt(g.steps)}` : "Add",
+    water: `${log.water} / ${g.water}`,
+    sleep: hours != null ? formatHours(hours) : "Add",
+    workout: mins ? `${fmt(mins)} min` : "Add",
+    food: log.foods.length ? `${log.foods.length} item${log.foods.length === 1 ? "" : "s"}` : "Add",
+    fast: running ? formatHours(Math.max(0, (Date.now() - running.start) / 3600000)) : log.fasts.length ? `${formatHours(fastHours(log))} done` : "Start",
+    cycle: c?.last ? `Day ${diffDays(c.last, date) + 1}` : "Log",
+    goals: "Edit",
+  };
+  for (const v of el.quick.querySelectorAll("[data-value]")) v.textContent = values[v.dataset.value] || "";
+}
+
+el.fab.addEventListener("click", openQuick);
+el.quick.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-open]");
+  if (b) openLog(b.dataset.open);
+});
+el.quickAll.addEventListener("click", () => openLog(null));
+el.quickClose.addEventListener("click", closeAll);
+el.logBack.addEventListener("click", () => { logSheet = false; logSection = null; openQuick(); });
+el.logClose.addEventListener("click", closeAll);
+el.backdrop.addEventListener("click", closeAll);
+// Tapping a number on Today opens that part of the log
+el.summary.addEventListener("click", (e) => {
+  if (viewing) return;
+  const stat = e.target.closest("[data-section]");
+  openLog(stat ? stat.dataset.section : null);
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAll(); });
 
 // ---------- Subscriptions ----------
 function onStoreError(err) {
