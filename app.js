@@ -15,7 +15,7 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=16";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=18";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -419,6 +419,7 @@ function render() {
   const inApp = !signedOut && !!store;
   const on = (r) => inApp && route === r;
   el.tabbar.hidden = !inApp;
+  document.body.dataset.route = inApp ? route : "signin";
   el.installTip.hidden = !(installWanted && (!inApp || route === "today"));
   document.body.classList.toggle("has-tabbar", inApp);
   for (const a of el.tabbar.querySelectorAll("a")) {

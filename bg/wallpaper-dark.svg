@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" preserveAspectRatio="xMidYMax slice">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0B1716"/>
+      <stop offset="0.6" stop-color="#0E1513"/>
+      <stop offset="1" stop-color="#0E1412"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#F6C969" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#F6C969" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="900" fill="url(#sky)"/>
+  <!-- morning sun -->
+  <circle cx="720" cy="590" r="240" fill="url(#glow)"/>
+  <circle cx="720" cy="590" r="84" fill="#F6C969" opacity="0.22"/>
+  <!-- soft clouds -->
+  <g fill="#9CB5AE" opacity="0.08">
+    <ellipse cx="300" cy="200" rx="120" ry="26"/><ellipse cx="360" cy="182" rx="70" ry="24"/>
+    <ellipse cx="960" cy="380" rx="110" ry="22"/><ellipse cx="1010" cy="364" rx="60" ry="20"/>
+  </g>
+  <!-- birds -->
+  <g fill="none" stroke="#9CB5AE" stroke-width="3" stroke-linecap="round" opacity="0.25">
+    <path d="M560 470 q10 -10 20 0 q10 -10 20 0"/><path d="M610 440 q8 -8 16 0 q8 -8 16 0"/>
+  </g>
+  <!-- rolling hills, back to front -->
+  <path d="M0 610 C 200 540, 380 560, 560 600 S 900 650, 1200 560 V900 H0 Z" fill="#12231F"/>
+  <path d="M0 680 C 220 620, 420 650, 640 690 S 1000 700, 1200 640 V900 H0 Z" fill="#163029"/>
+  <path d="M0 760 C 260 710, 520 740, 760 770 S 1080 760, 1200 730 V900 H0 Z" fill="#1B3B33"/>
+  <!-- winding walking path -->
+  <path d="M640 900 C 560 840, 720 800, 640 760 S 600 712, 650 690" fill="none" stroke="#2A3A33" stroke-width="22" stroke-linecap="round" opacity="0.9"/>
+  <!-- little trees -->
+  <g fill="#24493F">
+    <circle cx="210" cy="640" r="18"/><rect x="207" y="652" width="6" height="22" rx="2"/>
+    <circle cx="245" cy="652" r="13"/><rect x="242" y="661" width="5" height="16" rx="2"/>
+    <circle cx="1010" cy="666" r="16"/><rect x="1007" y="677" width="6" height="20" rx="2"/>
+  </g>
+</svg>

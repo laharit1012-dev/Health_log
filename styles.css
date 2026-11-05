@@ -949,3 +949,54 @@ a { color: var(--accent); font-weight: 700; text-underline-offset: 0.2em; }
 
 /* Leave room so the tab bar never covers the end of a page */
 body.has-tabbar { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px)); }
+
+/* ---------- Wallpaper ---------- */
+:root { --wallpaper: url("bg/wallpaper-light.svg?v=18"); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --wallpaper: url("bg/wallpaper-dark.svg?v=18"); } }
+:root[data-theme="dark"] { --wallpaper: url("bg/wallpaper-dark.svg?v=18"); }
+
+.wallpaper {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--wallpaper) center bottom / cover no-repeat;
+  opacity: 0.3;                       /* dimmed on Family, Reminders, Account */
+  transition: opacity 0.3s ease;
+}
+
+/* Full wallpaper on Today and on the sign-in screen */
+body[data-route="today"] .wallpaper,
+body[data-route="signin"] .wallpaper { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) { .wallpaper { transition: none; } }
+
+/* Keep small text readable where it sits straight on the wallpaper */
+.site-footer p {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+}
+
+/* Today: frosted cards so the wallpaper shows through (text contrast checked ≥ 5.5:1) */
+body[data-route="today"] .log-panel,
+body[data-route="today"] .summary .stat,
+body[data-route="today"] .goals-form,
+body[data-route="today"] .install-tip {
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+body[data-route="today"] .log-block {
+  background: color-mix(in srgb, var(--bg) 75%, transparent);
+}
+
+body[data-route="today"] .goals-row {
+  padding: 0.625rem 0.875rem;
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
