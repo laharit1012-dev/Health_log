@@ -170,7 +170,7 @@
       <div id="cycle-section" class="food" hidden>
         <div class="section-head">
           <h3>Period</h3>
-          <span class="hint">Private to you</span>
+          <span id="cycle-scope" class="hint">Private to you</span>
         </div>
         <div class="log-block cycle">
           <div class="cycle__status">
@@ -191,7 +191,7 @@
           </label>
           <p id="cycle-avg" class="hint"></p>
           <ul id="cycle-history" class="link-list" aria-label="Logged period start dates"></ul>
-          <p class="hint">Expected dates are estimates from your own entries, not medical advice.</p>
+          <p class="hint">Expected dates are estimates from the logged dates, not medical advice.</p>
         </div>
       </div>
 
@@ -261,12 +261,23 @@
           <div id="share-off" class="stack stack--tight">
             <p class="hint">Sharing is off. Nobody else can see your log.</p>
             <button id="share-create" class="btn btn--fit" type="button">Create share code</button>
+            <div id="share-cycle-ask" class="confirm" hidden>
+              <p><strong>Share your period tracker too?</strong> People with your code will see your steps, water, sleep, workouts and food. Choose whether they also see your period dates.</p>
+              <div class="row">
+                <button id="share-cycle-yes" class="btn" type="button">Yes, share it</button>
+                <button id="share-cycle-no" class="btn btn--ghost" type="button">No, keep it private</button>
+              </div>
+            </div>
           </div>
           <div id="share-on" class="stack stack--tight" hidden>
             <output id="share-code" class="share-code"></output>
             <div class="row">
               <button id="share-copy" class="btn" type="button">Copy code</button>
               <button id="share-stop" class="btn btn--ghost" type="button">Turn off sharing</button>
+            </div>
+            <div id="share-cycle-setting" class="share-cycle" hidden>
+              <p id="share-cycle-state" class="hint"></p>
+              <button id="share-cycle-toggle" class="btn btn--ghost btn--small btn--fit" type="button"></button>
             </div>
             <div id="share-confirm" class="confirm" hidden>
               <p>Anyone using this code will stop seeing your log. To share again later you'll get a new code.</p>

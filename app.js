@@ -131,7 +131,7 @@ const workoutMinutes = (log) => log.workouts.reduce((sum, w) => sum + (Number(w.
 //   users/<uid>/days/<date>  { steps, water, sleep, workouts, foods }
 // Shared copy, only while sharing is on (readable by signed-in people who
 // know the code; the code can't be listed or guessed in practice):
-//   shares/<code>              { owner: <uid>, name }
+//   shares/<code>              { owner: <uid>, name, cycle (only if she chose to share it) }
 //   shares/<code>/days/<date>  copy of each day
 function firestoreStore(db, uid) {
   const userRef = doc(db, "users", uid);
@@ -150,19 +150,20 @@ function firestoreStore(db, uid) {
     watchProfile: (cb, onError) => watch(userRef, (d, m) => cb(d
       ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null }
       : null, m), onError),
-    watchSharing: (cb, onError) => watch(userRef, (d, m) => cb(d?.shareCode ? { code: d.shareCode } : null, m), onError),
+    watchSharing: (cb, onError) => watch(userRef, (d, m) => cb(d?.shareCode ? { code: d.shareCode, cycle: !!d.shareCycle } : null, m), onError),
     watchLinks: (cb, onError) => watch(userRef, (d, m) => cb({ people: Array.isArray(d?.links) ? d.links : [] }, m), onError),
     watchDay: (date, cb, onError) => watch(dayRef(date), cb, onError),
     saveDay: (log) => setDoc(dayRef(log.date), log),
     saveName: (name) => mergeUser({ name }),
     saveProfile: (changes) => mergeUser(changes),       // { name?, gender? }
     saveCycle: (cycle) => mergeUser({ cycle }),         // private: never copied to shares
-    saveSharing: (code) => mergeUser({ shareCode: code }),
+    saveSharing: (code, shareCycle = false) => mergeUser({ shareCode: code, shareCycle }),
     saveLinks: (people) => mergeUser({ links: people }),
 
     // Copies kept for people you share with
     mirrorDay: (code, log) => setDoc(shareDayRef(code, log.date), log),
-    mirrorName: (code, name) => setDoc(shareRef(code), { owner: uid, name }),
+    // The shared header: name, plus period data only if she chose to share it
+    mirrorProfile: (code, name, cycle) => setDoc(shareRef(code), { owner: uid, name, cycle: cycle || null }),
     async copyAllDays(code) {
       const snap = await getDocs(collection(db, "users", uid, "days"));
       for (const d of snap.docs) await setDoc(shareDayRef(code, d.id), d.data());
@@ -212,10 +213,11 @@ const drafts = {};         // date -> log with unsaved edits
 let unwatchDay = null;
 let blocked = "";          // message when this person can't save
 
-let sharing = null;        // { code } when sharing is on
+let sharing = null;        // { code, cycle } when sharing is on; cycle = period data is shared too
 let links = [];            // [{ code, name }] people whose logs you can see
 let viewing = null;        // null = your own log, otherwise a linked person's code
 let viewName = "";         // name of the linked person being viewed
+let viewCycle = null;      // their period data, only if they chose to share it
 let viewGone = false;      // the linked person stopped sharing
 let pendingShare = false;  // create a code as soon as a name is saved
 
@@ -288,7 +290,7 @@ const el = {
   panel: $("log-panel"), logTitle: $("log-title"),
   editName: $("edit-name"), renameForm: $("rename-form"), renameInput: $("rename-input"), cancelRename: $("cancel-rename"),
   renameGender: $("rename-gender"),
-  cycleSection: $("cycle-section"), cycleDay: $("cycle-day"), cycleHint: $("cycle-hint"),
+  cycleSection: $("cycle-section"), cycleScope: $("cycle-scope"), cycleDay: $("cycle-day"), cycleHint: $("cycle-hint"),
   cycleForm: $("cycle-form"), cycleDate: $("cycle-date"), cycleMsg: $("cycle-msg"),
   cycleLength: $("cycle-length"), cycleAvg: $("cycle-avg"), cycleHistory: $("cycle-history"),
   steps: $("steps"), stepsBar: $("steps-bar"), stepsHint: $("steps-hint"),
@@ -300,7 +302,9 @@ const el = {
   foodList: $("food-list"), foodTotal: $("food-total"),
   people: $("people"), viewNote: $("view-note"), summaryTitle: $("summary-title"),
   linkPanel: $("link-panel"), shareOff: $("share-off"), shareOn: $("share-on"), shareCode: $("share-code"),
-  shareCreate: $("share-create"), shareCopy: $("share-copy"), shareStop: $("share-stop"),
+  shareCreate: $("share-create"),
+  shareCycleAsk: $("share-cycle-ask"), shareCycleYes: $("share-cycle-yes"), shareCycleNo: $("share-cycle-no"),
+  shareCycleSetting: $("share-cycle-setting"), shareCycleState: $("share-cycle-state"), shareCycleToggle: $("share-cycle-toggle"), shareCopy: $("share-copy"), shareStop: $("share-stop"),
   shareConfirm: $("share-confirm"), shareStopYes: $("share-stop-yes"), shareStopNo: $("share-stop-no"), shareMsg: $("share-msg"),
   linkForm: $("link-form"), linkCode: $("link-code"), linkMsg: $("link-msg"), linkList: $("link-list"),
 };
@@ -370,6 +374,13 @@ function renderLinkPanel() {
   el.shareOff.hidden = on;
   el.shareOn.hidden = !on;
   if (on) el.shareCode.textContent = sharing.code;
+  el.shareCycleSetting.hidden = !(on && isFemale());
+  if (on && isFemale()) {
+    el.shareCycleState.textContent = sharing.cycle
+      ? "Period tracker: shared with people who have your code."
+      : "Period tracker: private. People with your code don't see it.";
+    el.shareCycleToggle.textContent = sharing.cycle ? "Stop sharing period tracker" : "Share period tracker too";
+  }
   el.shareStop.hidden = !el.shareConfirm.hidden;
 
   el.linkList.replaceChildren();
@@ -425,8 +436,8 @@ function renderSummary() {
   const wCount = log.workouts.length;
   addStat("Workouts", wCount ? (wMins ? `${fmt(wMins)} min` : String(wCount)) : "—",
     wCount ? (wMins ? `${wCount} workout${wCount === 1 ? "" : "s"}` : (wCount === 1 ? "workout" : "workouts")) : "");
-  if (!viewing && isFemale()) {
-    const c = cycleInfo(profile.cycle, date);
+  if (viewing ? !!viewCycle : isFemale()) {
+    const c = cycleInfo(viewing ? viewCycle : profile.cycle, date);
     if (c.last) addStat("Cycle", `Day ${diffDays(c.last, date) + 1}`, `next ~${shortDate(shiftDate(c.last, c.len))}`);
     else addStat("Cycle", "—");
   }
@@ -506,11 +517,15 @@ function cycleInfo(cycle, refISO) {
 }
 
 function renderCycle() {
-  const show = !viewing && isFemale() && !!store;
+  const show = viewing ? !!viewCycle : isFemale() && !!store;
   el.cycleSection.hidden = !show;
   if (!show) return;
 
-  const cycle = profile.cycle || {};
+  const ro = readOnly();
+  const cycle = (viewing ? viewCycle : profile.cycle) || {};
+  el.cycleForm.hidden = ro;
+  el.cycleLength.closest(".field").hidden = ro;
+  el.cycleScope.textContent = viewing ? `Shared by ${viewName || "them"}` : "Private to you";
   const { starts, avg, len, last } = cycleInfo(cycle, date);
 
   if (!last) {
@@ -529,13 +544,15 @@ function renderCycle() {
         ? "of your cycle · next period expected today"
         : `of your cycle · next period was expected around ${shortDate(next)} (${-until} day${until === -1 ? "" : "s"} ago)`;
   }
+  if (viewing && !last && !starts.length) el.cycleHint.textContent = "No periods logged yet.";
 
   el.cycleDate.max = todayISO();
   if (!el.cycleDate.value) el.cycleDate.value = date;
   setValue(el.cycleLength, cycle.length ?? "");
   el.cycleLength.placeholder = String(avg || 28);
   el.cycleAvg.textContent = avg
-    ? `Average from your log: ${avg} days.${cycle.length ? "" : " Used for the expected date."}`
+    ? `Average cycle length: ${avg} days.${cycle.length ? ` Usual length set to ${cycle.length} days.` : ""}`
+    : ro ? (cycle.length ? `Usual cycle length: ${cycle.length} days.` : "")
     : starts.length < 2 ? "Log two or more periods to see your average cycle length." : "";
 
   el.cycleHistory.replaceChildren();
@@ -551,7 +568,8 @@ function renderCycle() {
     del.textContent = "Remove";
     del.setAttribute("aria-label", `Remove period starting ${longDate(d)}`);
     del.addEventListener("click", () => saveCycle({ starts: starts.filter((x) => x !== d), length: cycle.length ?? null }));
-    li.append(name, del);
+    li.append(name);
+    if (!ro) li.append(del);
     el.cycleHistory.append(li);
   }
 }
@@ -560,7 +578,7 @@ async function saveCycle(cycle) {
   if (readOnly()) return;
   profile = { ...(profile || {}), cycle };
   render();
-  try { await store.saveCycle(cycle); } catch (err) { handleWriteError(err); render(); }
+  try { await store.saveCycle(cycle); await syncShareProfile(); } catch (err) { handleWriteError(err); render(); }
 }
 
 el.cycleForm.addEventListener("submit", (e) => {
@@ -786,7 +804,7 @@ el.renameForm.addEventListener("submit", async (e) => {
     render();
     try {
       await store.saveProfile(changes);
-      if (changes.name && sharing?.code) await store.mirrorName(sharing.code, name);
+      if (sharing?.code) await syncShareProfile();
     } catch (err) {
       handleWriteError(err);
       render();
@@ -804,6 +822,15 @@ el.cancelRename.addEventListener("click", () => { pendingShare = false; closeRen
 // ---------- Share codes and linked people ----------
 let shareBusy = false;
 
+// Rewrite the shared header (name + period data if she shares it)
+function syncShareProfile() {
+  if (!sharing?.code || !store) return Promise.resolve();
+  const cycle = sharing.cycle && isFemale() ? (profile?.cycle || { starts: [], length: null }) : null;
+  return store.mirrorProfile(sharing.code, displayName(), cycle).catch(() => {});
+}
+
+let shareCycleChoice = null; // her answer to "Share your period tracker too?"
+
 async function createShareCode() {
   if (shareBusy || !store?.canLink) return;
   const name = profile?.name;
@@ -819,15 +846,27 @@ async function createShareCode() {
     el.shareMsg.textContent = "First, save the name linked people will see. Your code is created right after.";
     return;
   }
+  if (isFemale() && shareCycleChoice === null) {
+    // Ask before anything is shared
+    el.shareCycleAsk.hidden = false;
+    el.shareCreate.hidden = true;
+    el.shareMsg.textContent = "";
+    el.shareCycleYes.focus();
+    return;
+  }
+  const withCycle = isFemale() && shareCycleChoice === true;
+  shareCycleChoice = null;
+  el.shareCycleAsk.hidden = true;
+  el.shareCreate.hidden = false;
   shareBusy = true;
   el.shareCreate.disabled = true;
   el.shareMsg.textContent = "Creating your code…";
   const code = newShareCode();
   try {
-    await store.mirrorName(code, name);
+    await store.mirrorProfile(code, name, withCycle ? (profile?.cycle || { starts: [], length: null }) : null);
     await store.copyAllDays(code);
-    await store.saveSharing(code);
-    sharing = { code };
+    await store.saveSharing(code, withCycle);
+    sharing = { code, cycle: withCycle };
     el.shareMsg.textContent = "Give this code to the person you want to share with.";
   } catch (err) {
     el.shareMsg.textContent = "Couldn't create a code. Check your connection and try again.";
@@ -839,6 +878,30 @@ async function createShareCode() {
 }
 
 el.shareCreate.addEventListener("click", createShareCode);
+el.shareCycleYes.addEventListener("click", () => { shareCycleChoice = true; createShareCode(); });
+el.shareCycleNo.addEventListener("click", () => { shareCycleChoice = false; createShareCode(); });
+
+// Change her mind later
+el.shareCycleToggle.addEventListener("click", async () => {
+  if (!sharing?.code || shareBusy) return;
+  const next = !sharing.cycle;
+  shareBusy = true;
+  el.shareCycleToggle.disabled = true;
+  try {
+    sharing = { ...sharing, cycle: next };
+    await store.saveSharing(sharing.code, next);
+    await syncShareProfile();
+    el.shareMsg.textContent = next
+      ? "Your period tracker is now shared with people who have your code."
+      : "Your period tracker is private again. People with your code no longer see it.";
+  } catch {
+    el.shareMsg.textContent = "Couldn't change that. Check your connection and try again.";
+  } finally {
+    shareBusy = false;
+    el.shareCycleToggle.disabled = false;
+    render();
+  }
+});
 
 el.shareCopy.addEventListener("click", async () => {
   if (!sharing?.code) return;
@@ -926,8 +989,9 @@ function viewPerson(code) {
   if (unwatchViewProfile) { unwatchViewProfile(); unwatchViewProfile = null; }
   if (code) {
     viewName = links.find((p) => p.code === code)?.name || "";
+    viewCycle = null;
     unwatchViewProfile = store.watchSharedProfile(code, (p, meta) => {
-      if (p) { viewName = p.name || viewName; viewGone = false; }
+      if (p) { viewName = p.name || viewName; viewCycle = p.cycle || null; viewGone = false; }
       else if (!meta?.fromCache) viewGone = true;
       render();
     }, () => {});

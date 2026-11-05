@@ -722,3 +722,11 @@ main {
 .cycle-form .field { flex: 1 1 12rem; }
 .cycle__len { max-width: 14rem; }
 #cycle-msg:empty, #cycle-avg:empty { display: none; }
+
+.share-cycle {
+  display: grid;
+  gap: 0.375rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+.share-cycle .hint { color: var(--fg); }
