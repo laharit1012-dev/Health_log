@@ -12,8 +12,9 @@ Each day you can log:
 - **Sleep**: bedtime and wake-up time; hours are worked out automatically
 - **Workouts**: as many as you did (walk, strength, yoga…), each with minutes and notes, plus a daily total
 - **Food**: everything eaten through the day, grouped by meal, with optional calories
+- **Period** (shown only for women): log the day each period starts to see your cycle day, average cycle length and when the next one is expected. This stays private to you and is never shared through share codes.
 
-Use the arrows at the top to look back at earlier days. **Edit name** changes the name shown on your log.
+Use the arrows at the top to look back at earlier days. **Edit profile** changes your name and gender. Gender is asked when you create an account.
 
 ## Seeing each other's logs (share codes)
 

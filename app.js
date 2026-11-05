@@ -127,7 +127,7 @@ const workoutMinutes = (log) => log.workouts.reduce((sum, w) => sum + (Number(w.
 
 // ---------- Storage (Cloud Firestore) ----------
 // Private to each person (locked by the security rules in firestore.rules):
-//   users/<uid>              { name, shareCode, links: [{ code, name }] }
+//   users/<uid>              { name, gender, cycle: { starts, length }, shareCode, links: [{ code, name }] }
 //   users/<uid>/days/<date>  { steps, water, sleep, workouts, foods }
 // Shared copy, only while sharing is on (readable by signed-in people who
 // know the code; the code can't be listed or guessed in practice):
@@ -147,12 +147,16 @@ function firestoreStore(db, uid) {
   return {
     kind: "account",
     canLink: true,
-    watchProfile: (cb, onError) => watch(userRef, (d, m) => cb(d?.name ? { name: d.name } : null, m), onError),
+    watchProfile: (cb, onError) => watch(userRef, (d, m) => cb(d
+      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null }
+      : null, m), onError),
     watchSharing: (cb, onError) => watch(userRef, (d, m) => cb(d?.shareCode ? { code: d.shareCode } : null, m), onError),
     watchLinks: (cb, onError) => watch(userRef, (d, m) => cb({ people: Array.isArray(d?.links) ? d.links : [] }, m), onError),
     watchDay: (date, cb, onError) => watch(dayRef(date), cb, onError),
     saveDay: (log) => setDoc(dayRef(log.date), log),
     saveName: (name) => mergeUser({ name }),
+    saveProfile: (changes) => mergeUser(changes),       // { name?, gender? }
+    saveCycle: (cycle) => mergeUser({ cycle }),         // private: never copied to shares
     saveSharing: (code) => mergeUser({ shareCode: code }),
     saveLinks: (people) => mergeUser({ links: people }),
 
@@ -200,7 +204,7 @@ function normalizeCode(input) {
 // ---------- App state ----------
 let store = null;
 let me = null;             // { email } of the signed-in person
-let profile = null;        // { name } chosen in the app
+let profile = null;        // { name, gender, cycle } chosen in the app
 let dayLog = null;         // stored log for `date`
 let loaded = false;
 let date = todayISO();
@@ -217,6 +221,7 @@ let pendingShare = false;  // create a code as soon as a name is saved
 
 const logNow = () => (viewing ? normalize(dayLog, date) : drafts[date] || normalize(dayLog, date));
 const displayName = () => profile?.name || "";
+const isFemale = () => profile?.gender === "female";
 let dayReady = false;      // the log for `date` has arrived; editing before that could overwrite it
 const readOnly = () => !!blocked || !!viewing || !store || !dayReady;
 
@@ -282,6 +287,10 @@ const el = {
   signin: $("signin-panel"), summaryPanel: $("summary-panel"), summary: $("summary"),
   panel: $("log-panel"), logTitle: $("log-title"),
   editName: $("edit-name"), renameForm: $("rename-form"), renameInput: $("rename-input"), cancelRename: $("cancel-rename"),
+  renameGender: $("rename-gender"),
+  cycleSection: $("cycle-section"), cycleDay: $("cycle-day"), cycleHint: $("cycle-hint"),
+  cycleForm: $("cycle-form"), cycleDate: $("cycle-date"), cycleMsg: $("cycle-msg"),
+  cycleLength: $("cycle-length"), cycleAvg: $("cycle-avg"), cycleHistory: $("cycle-history"),
   steps: $("steps"), stepsBar: $("steps-bar"), stepsHint: $("steps-hint"),
   waterMinus: $("water-minus"), waterPlus: $("water-plus"), waterCount: $("water-count"), waterBar: $("water-bar"), waterHint: $("water-hint"),
   bed: $("sleep-bed"), wake: $("sleep-wake"), sleepHint: $("sleep-hint"),
@@ -416,6 +425,11 @@ function renderSummary() {
   const wCount = log.workouts.length;
   addStat("Workouts", wCount ? (wMins ? `${fmt(wMins)} min` : String(wCount)) : "—",
     wCount ? (wMins ? `${wCount} workout${wCount === 1 ? "" : "s"}` : (wCount === 1 ? "workout" : "workouts")) : "");
+  if (!viewing && isFemale()) {
+    const c = cycleInfo(profile.cycle, date);
+    if (c.last) addStat("Cycle", `Day ${diffDays(c.last, date) + 1}`, `next ~${shortDate(shiftDate(c.last, c.len))}`);
+    else addStat("Cycle", "—");
+  }
   addStat("Food", log.foods.length ? String(log.foods.length) : "—",
     log.foods.length
       ? (log.foods.length === 1 ? "item" : "items") + (kcal ? ` · ${fmt(kcal)} kcal` : "")
@@ -472,6 +486,111 @@ function renderWorkouts(log) {
   el.wList.append(wrap);
 }
 
+// ---------- Period (cycle) ----------
+const diffDays = (a, b) => Math.round((fromISO(b) - fromISO(a)) / 86400000);
+const shortDate = (iso) => fromISO(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+const longDate = (iso) => fromISO(iso).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+
+// starts: period start dates; length: the usual cycle length she set (optional)
+function cycleInfo(cycle, refISO) {
+  const starts = [...new Set(Array.isArray(cycle?.starts) ? cycle.starts : [])].sort();
+  const gaps = [];
+  for (let i = 1; i < starts.length; i++) {
+    const g = diffDays(starts[i - 1], starts[i]);
+    if (g >= 15 && g <= 60) gaps.push(g);
+  }
+  const avg = gaps.length ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) : null;
+  const len = cycle?.length || avg || 28;
+  const last = [...starts].reverse().find((d) => d <= refISO) || null;
+  return { starts, avg, len, last };
+}
+
+function renderCycle() {
+  const show = !viewing && isFemale() && !!store;
+  el.cycleSection.hidden = !show;
+  if (!show) return;
+
+  const cycle = profile.cycle || {};
+  const { starts, avg, len, last } = cycleInfo(cycle, date);
+
+  if (!last) {
+    el.cycleDay.textContent = "—";
+    el.cycleHint.textContent = starts.length
+      ? "No period logged on or before this day."
+      : "Log the day your last period started to see your cycle day and when the next one is expected.";
+  } else {
+    const day = diffDays(last, date) + 1;
+    const next = shiftDate(last, len);
+    const until = diffDays(date, next);
+    el.cycleDay.textContent = `Day ${day}`;
+    el.cycleHint.textContent = until > 0
+      ? `of your cycle · next period expected around ${shortDate(next)} (in ${until} day${until === 1 ? "" : "s"})`
+      : until === 0
+        ? "of your cycle · next period expected today"
+        : `of your cycle · next period was expected around ${shortDate(next)} (${-until} day${until === -1 ? "" : "s"} ago)`;
+  }
+
+  el.cycleDate.max = todayISO();
+  if (!el.cycleDate.value) el.cycleDate.value = date;
+  setValue(el.cycleLength, cycle.length ?? "");
+  el.cycleLength.placeholder = String(avg || 28);
+  el.cycleAvg.textContent = avg
+    ? `Average from your log: ${avg} days.${cycle.length ? "" : " Used for the expected date."}`
+    : starts.length < 2 ? "Log two or more periods to see your average cycle length." : "";
+
+  el.cycleHistory.replaceChildren();
+  for (const d of [...starts].reverse().slice(0, 6)) {
+    const li = document.createElement("li");
+    li.className = "link-row";
+    const name = document.createElement("span");
+    name.className = "link-row__name";
+    name.textContent = longDate(d);
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "food-row__delete";
+    del.textContent = "Remove";
+    del.setAttribute("aria-label", `Remove period starting ${longDate(d)}`);
+    del.addEventListener("click", () => saveCycle({ starts: starts.filter((x) => x !== d), length: cycle.length ?? null }));
+    li.append(name, del);
+    el.cycleHistory.append(li);
+  }
+}
+
+async function saveCycle(cycle) {
+  if (readOnly()) return;
+  profile = { ...(profile || {}), cycle };
+  render();
+  try { await store.saveCycle(cycle); } catch (err) { handleWriteError(err); render(); }
+}
+
+el.cycleForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const d = el.cycleDate.value;
+  const cycle = profile?.cycle || {};
+  const starts = Array.isArray(cycle.starts) ? cycle.starts : [];
+  if (!d) { el.cycleMsg.textContent = "Pick the date your period started."; return; }
+  if (d > todayISO()) { el.cycleMsg.textContent = "That date is in the future. Pick today or an earlier day."; return; }
+  if (starts.includes(d)) { el.cycleMsg.textContent = "That date is already logged."; return; }
+  el.cycleMsg.textContent = `Logged: period started ${longDate(d)}.`;
+  saveCycle({ starts: [...starts, d].sort().slice(-24), length: cycle.length ?? null });
+});
+
+let cycleLenTimer = null;
+el.cycleLength.addEventListener("input", () => {
+  clearTimeout(cycleLenTimer);
+  cycleLenTimer = setTimeout(() => {
+    const v = el.cycleLength.value;
+    const n = v === "" ? null : Math.round(Number(v));
+    if (n !== null && (n < 15 || n > 60)) {
+      el.cycleMsg.textContent = "Cycle length should be between 15 and 60 days.";
+      return;
+    }
+    el.cycleMsg.textContent = "";
+    const cycle = profile?.cycle || {};
+    saveCycle({ starts: Array.isArray(cycle.starts) ? cycle.starts : [], length: n });
+  }, 600);
+});
+
 function renderPanel() {
   const log = logNow();
   if (viewing) {
@@ -489,8 +608,10 @@ function renderPanel() {
     el.logTitle.textContent = name ? `${name}'s log` : "Your log";
     el.summaryTitle.textContent = "Your day";
     el.editName.hidden = !!blocked || !el.renameForm.hidden;
-    el.editName.textContent = name ? "Edit name" : "Add your name";
-    el.viewNote.hidden = true;
+    el.editName.textContent = name ? "Edit profile" : "Add your name";
+    const needsGender = profile && !profile.gender && el.renameForm.hidden;
+    el.viewNote.hidden = !needsGender;
+    if (needsGender) el.viewNote.textContent = "Tap Edit profile to add your gender. Women also get a private period tracker.";
   }
 
   // Steps
@@ -515,6 +636,9 @@ function renderPanel() {
     const note = hours < GOALS.sleepMin ? "below goal" : hours > GOALS.sleepMax ? "above goal" : "in goal range";
     el.sleepHint.textContent = `${formatHours(hours)} of sleep · ${note}`;
   }
+
+  // Period (women only, private)
+  renderCycle();
 
   // Workouts
   renderWorkouts(log);
@@ -641,6 +765,7 @@ function closeRename() {
 
 el.editName.addEventListener("click", () => {
   el.renameInput.value = displayName();
+  el.renameGender.value = profile?.gender || "";
   el.renameForm.hidden = false;
   render();
   el.renameInput.focus();
@@ -650,14 +775,18 @@ el.editName.addEventListener("click", () => {
 el.renameForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const name = el.renameInput.value.trim();
+  const gender = el.renameGender.value;
   if (!name || !store) return;
   closeRename();
-  if (name !== profile?.name) {
-    profile = { name };
+  const changes = {};
+  if (name !== profile?.name) changes.name = name;
+  if (gender && gender !== profile?.gender) changes.gender = gender;
+  if (Object.keys(changes).length) {
+    profile = { ...(profile || {}), ...changes };
     render();
     try {
-      await store.saveName(name);
-      if (sharing?.code) await store.mirrorName(sharing.code, name);
+      await store.saveProfile(changes);
+      if (changes.name && sharing?.code) await store.mirrorName(sharing.code, name);
     } catch (err) {
       handleWriteError(err);
       render();
@@ -682,6 +811,7 @@ async function createShareCode() {
     // Linked people need to know whose log they're looking at
     pendingShare = true;
     el.renameInput.value = displayName();
+    el.renameGender.value = profile?.gender || "";
     el.renameForm.hidden = false;
     render();
     el.panel.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -885,11 +1015,12 @@ setInterval(() => {
 const auth_ = {
   title: $("auth-title"), intro: $("auth-intro"), tabIn: $("tab-signin"), tabUp: $("tab-signup"),
   form: $("auth-form"), nameField: $("auth-name-field"), name: $("auth-name"),
+  genderField: $("auth-gender-field"), gender: $("auth-gender"),
   email: $("auth-email"), password: $("auth-password"), msg: $("auth-msg"),
   submit: $("auth-submit"), forgot: $("auth-forgot"),
 };
 let authMode = "signin";
-let pendingName = "";      // name typed when creating an account
+let pendingProfile = null; // { name, gender } typed when creating an account
 
 function setAuthMode(mode) {
   authMode = mode;
@@ -897,6 +1028,7 @@ function setAuthMode(mode) {
   auth_.tabIn.setAttribute("aria-selected", String(!up));
   auth_.tabUp.setAttribute("aria-selected", String(up));
   auth_.nameField.hidden = !up;
+  auth_.genderField.hidden = !up;
   auth_.title.textContent = up ? "Create your account" : "Sign in";
   auth_.intro.textContent = up
     ? "Make an account to keep your own private log. Use a password with at least 6 characters."
@@ -936,11 +1068,16 @@ auth_.form.addEventListener("submit", async (e) => {
     auth_.name.focus();
     return;
   }
+  if (authMode === "signup" && !auth_.gender.value) {
+    auth_.msg.textContent = "Choose your gender.";
+    auth_.gender.focus();
+    return;
+  }
   auth_.submit.disabled = true;
   auth_.msg.textContent = authMode === "signup" ? "Creating your account…" : "Signing in…";
   try {
     if (authMode === "signup") {
-      pendingName = auth_.name.value.trim();
+      pendingProfile = { name: auth_.name.value.trim(), gender: auth_.gender.value };
       await createUserWithEmailAndPassword(auth, email, password);
     } else {
       await signInWithEmailAndPassword(auth, email, password);
@@ -948,7 +1085,7 @@ auth_.form.addEventListener("submit", async (e) => {
     auth_.password.value = "";
     auth_.msg.textContent = "";
   } catch (err) {
-    pendingName = "";
+    pendingProfile = null;
     auth_.msg.textContent = authMessage(err);
   } finally {
     auth_.submit.disabled = false;
@@ -1008,10 +1145,10 @@ render();
     signedOut = false;
     me = { email: user.email || "" };
     const s = firestoreStore(db, user.uid);
-    if (pendingName) {
-      profile = { name: pendingName };
-      try { await s.saveName(pendingName); } catch {}
-      pendingName = "";
+    if (pendingProfile) {
+      profile = { ...pendingProfile, cycle: null };
+      try { await s.saveProfile(pendingProfile); } catch {}
+      pendingProfile = null;
     }
     start(s);
     render();

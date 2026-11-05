@@ -686,3 +686,39 @@ main {
   text-decoration: underline;
   text-underline-offset: 0.2em;
 }
+
+/* ---------- Edit profile ---------- */
+.profile-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 12rem) auto auto;
+  align-items: end;
+  gap: 0.5rem;
+}
+
+@media (max-width: 34rem) {
+  .profile-form { grid-template-columns: 1fr 1fr; }
+  .profile-form .field { grid-column: 1 / -1; }
+}
+
+/* ---------- Period ---------- */
+.cycle { gap: 0.75rem; }
+
+.cycle__status {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.cycle__status .hint { flex: 1 1 14rem; }
+
+.cycle-form {
+  display: flex;
+  align-items: end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.cycle-form .field { flex: 1 1 12rem; }
+.cycle__len { max-width: 14rem; }
+#cycle-msg:empty, #cycle-avg:empty { display: none; }

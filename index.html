@@ -69,6 +69,15 @@
           <span>Your name</span>
           <input id="auth-name" type="text" autocomplete="name" maxlength="40">
         </label>
+        <label class="field" id="auth-gender-field" hidden>
+          <span>Gender</span>
+          <select id="auth-gender">
+            <option value="">Choose…</option>
+            <option value="female">Female</option>
+            <option value="male">Male</option>
+            <option value="other">Prefer not to say</option>
+          </select>
+        </label>
         <label class="field">
           <span>Email</span>
           <input id="auth-email" type="email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" required>
@@ -96,14 +105,26 @@
     <section id="log-panel" class="log-panel" aria-labelledby="log-title" hidden>
       <div class="log-head">
         <h2 id="log-title">Your log</h2>
-        <button id="edit-name" class="btn btn--ghost btn--small" type="button">Edit name</button>
+        <button id="edit-name" class="btn btn--ghost btn--small" type="button">Edit profile</button>
       </div>
 
       <p id="view-note" class="view-note" hidden></p>
 
-      <form id="rename-form" class="inline-form" hidden>
-        <input id="rename-input" type="text" aria-label="Name" autocomplete="off" maxlength="40">
-        <button class="btn" type="submit">Save name</button>
+      <form id="rename-form" class="profile-form" hidden>
+        <label class="field">
+          <span>Name</span>
+          <input id="rename-input" type="text" autocomplete="off" maxlength="40">
+        </label>
+        <label class="field">
+          <span>Gender</span>
+          <select id="rename-gender">
+            <option value="">Choose…</option>
+            <option value="female">Female</option>
+            <option value="male">Male</option>
+            <option value="other">Prefer not to say</option>
+          </select>
+        </label>
+        <button class="btn" type="submit">Save</button>
         <button id="cancel-rename" class="btn btn--ghost" type="button">Cancel</button>
       </form>
 
@@ -142,6 +163,35 @@
             </label>
           </div>
           <p class="hint" id="sleep-hint">Goal 7–9 hours</p>
+        </div>
+      </div>
+
+      <!-- Period tracking: only for women, private to them -->
+      <div id="cycle-section" class="food" hidden>
+        <div class="section-head">
+          <h3>Period</h3>
+          <span class="hint">Private to you</span>
+        </div>
+        <div class="log-block cycle">
+          <div class="cycle__status">
+            <span id="cycle-day" class="counter__value">—</span>
+            <p id="cycle-hint" class="hint"></p>
+          </div>
+          <form id="cycle-form" class="cycle-form" novalidate>
+            <label class="field">
+              <span>Period started on</span>
+              <input id="cycle-date" type="date">
+            </label>
+            <button class="btn" type="submit">Log period</button>
+          </form>
+          <p id="cycle-msg" class="hint" aria-live="polite"></p>
+          <label class="field cycle__len">
+            <span>Usual cycle length (days)</span>
+            <input id="cycle-length" type="number" inputmode="numeric" min="15" max="60" placeholder="28">
+          </label>
+          <p id="cycle-avg" class="hint"></p>
+          <ul id="cycle-history" class="link-list" aria-label="Logged period start dates"></ul>
+          <p class="hint">Expected dates are estimates from your own entries, not medical advice.</p>
         </div>
       </div>
 
