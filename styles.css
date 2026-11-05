@@ -1543,3 +1543,12 @@ a.who[aria-current="page"] { border-color: var(--accent); color: var(--accent); 
 /* Let content inside cards shrink on narrow screens instead of widening the page */
 .link-panel > *, .stack > *, .group-challenges > *, .gch > *, .member > * { min-width: 0; }
 .share-code { overflow-wrap: anywhere; }
+
+/* No challenge joined: a small link instead of the festive card */
+.challenge-card.challenge-card--empty {
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  box-shadow: none;
+  border: 1px dashed var(--border);
+  padding: 0.625rem 1rem;
+}
+.challenge-card.challenge-card--empty a { color: var(--accent); font-weight: 700; }

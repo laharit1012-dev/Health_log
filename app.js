@@ -15,14 +15,14 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=35";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=35";
-import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=35";
-import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=35";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=36";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=36";
+import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=36";
+import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=36";
 
 // ---------- App version and updates ----------
 // Bump APP_VERSION and version.json together when publishing an update.
-const APP_VERSION = 35;
+const APP_VERSION = 36;
 
 // Open the newest version: a unique address makes the phone fetch fresh files
 function reloadFresh() {
@@ -2452,17 +2452,24 @@ function renderChallenges() {
   if (showCard) {
     el.challengeCard.replaceChildren();
     const active = CHALLENGES.filter((c) => myChallenge(c.id) && !challengeStatus(c).ended);
-    const head = document.createElement("div");
-    head.className = "challenge-card__head";
-    const t = document.createElement("strong");
-    const all = document.createElement("a");
-    all.href = "#challenges";
-    all.textContent = "All challenges ›";
-    if (active.length) {
-      t.textContent = "Your challenges";
+    el.challengeCard.classList.toggle("challenge-card--empty", !active.length);
+    if (!active.length) {
+      // Only challenges you picked appear here; otherwise just a way to find them
+      const link = document.createElement("a");
+      link.href = "#challenges";
+      link.textContent = "🏆 Pick a challenge ›";
+      el.challengeCard.append(link);
+    } else {
+      const head = document.createElement("div");
+      head.className = "challenge-card__head";
+      const t = document.createElement("strong");
+      t.textContent = active.length === 1 ? "Your challenge" : "Your challenges";
+      const all = document.createElement("a");
+      all.href = "#challenges";
+      all.textContent = "All challenges ›";
       head.append(t, all);
       el.challengeCard.append(head);
-      for (const c of active.slice(0, 3)) {
+      for (const c of active) {
         const st = challengeStatus(c);
         const row = document.createElement("div");
         row.className = "ch-row";
@@ -2477,18 +2484,6 @@ function renderChallenges() {
         row.append(label, bar);
         el.challengeCard.append(row);
       }
-    } else {
-      const featured = CHALLENGES.find((c) => c.type === "window" && !challengeStatus(c).ended && !challengeStatus(c).upcoming) || CHALLENGES[0];
-      t.textContent = `${featured.emoji} ${featured.name} is on!`;
-      head.append(t, all);
-      const p = document.createElement("span");
-      p.textContent = featured.about;
-      const join = document.createElement("button");
-      join.type = "button";
-      join.className = "btn btn--small btn--fit";
-      join.textContent = "Join the challenge";
-      join.addEventListener("click", () => setChallenge(featured.id, true));
-      el.challengeCard.append(head, p, join);
     }
   }
 
@@ -2567,6 +2562,15 @@ function renderGroupChallenges() {
       ol.append(li);
     });
     box.append(h, ol);
+    const st = challengeStatus(c);
+    if (!st.joined && !st.ended && !blocked) {
+      const join = document.createElement("button");
+      join.type = "button";
+      join.className = "btn btn--small btn--fit";
+      join.textContent = `Join the ${c.name}`;
+      join.addEventListener("click", () => setChallenge(c.id, true));
+      box.append(join);
+    }
     el.groupChallenges.append(box);
   }
 }
