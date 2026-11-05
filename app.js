@@ -15,13 +15,14 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=34";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=34";
-import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=34";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=35";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=35";
+import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=35";
+import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=35";
 
 // ---------- App version and updates ----------
 // Bump APP_VERSION and version.json together when publishing an update.
-const APP_VERSION = 34;
+const APP_VERSION = 35;
 
 // Open the newest version: a unique address makes the phone fetch fresh files
 function reloadFresh() {
@@ -189,7 +190,7 @@ function firestoreStore(db, uid) {
     kind: "account",
     canLink: true,
     watchProfile: (cb, onError) => watch(userRef, (d, m) => cb(d
-      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null, groups: Array.isArray(d.groups) ? d.groups : [], xpDays: d.xpDays || {}, badges: d.badges || {}, plan: d.plan || null, equip: d.equip || "bodyweight" }
+      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null, groups: Array.isArray(d.groups) ? d.groups : [], xpDays: d.xpDays || {}, badges: d.badges || {}, plan: d.plan || null, equip: d.equip || "bodyweight", challenges: Array.isArray(d.challenges) ? d.challenges : [] }
       : null, m), onError),
     watchSharing: (cb, onError) => watch(userRef, (d, m) => cb(d?.shareCode ? { code: d.shareCode, cycle: !!d.shareCycle } : null, m), onError),
     watchLinks: (cb, onError) => watch(userRef, (d, m) => cb({ people: Array.isArray(d?.links) ? d.links : [] }, m), onError),
@@ -452,6 +453,8 @@ const el = {
   videoFilters: $("video-filters"), videoList: $("video-list"), workoutPageMsg: $("workout-page-msg"),
   equipChoice: $("equip-choice"), folderBack: $("folder-back"), folderGrid: $("folder-grid"), videoMore: $("video-more"),
   libraryTitle: $("library-title"), libraryCount: $("library-count"),
+  challengesPanel: $("challenges-panel"), challengeList: $("challenge-list"), challengeCard: $("challenge-card"),
+  groupChallenges: $("group-challenges"),
   tabbar: $("tabbar"), tabPeriod: $("tab-period"), periodPanel: $("period-panel"),
   installTip: $("install-tip"), installText: $("install-text"), installBtn: $("install-btn"), installClose: $("install-close"),
   linkForm: $("link-form"), linkCode: $("link-code"), linkMsg: $("link-msg"), linkList: $("link-list"),
@@ -473,7 +476,7 @@ function setValue(input, value) {
 const caloriesOf = (log) => log.foods.reduce((sum, f) => sum + (Number(f.calories) || 0), 0);
 
 // ---------- Pages ----------
-const ROUTES = ["today", "cycle", "workouts", "family", "reminders", "account"];
+const ROUTES = ["today", "cycle", "workouts", "family", "reminders", "account", "challenges"];
 const routeFromHash = () => {
   let r = location.hash.replace("#", "");
   if (r === "period") r = "cycle"; // older links
@@ -532,6 +535,7 @@ function render() {
   el.panel.hidden = !on("today");
   el.periodPanel.hidden = !on("cycle");
   el.workoutsPanel.hidden = !on("workouts");
+  el.challengesPanel.hidden = !on("challenges");
   el.linkPanel.hidden = !on("family") || !store?.canLink || !!blocked;
   el.groupsPanel.hidden = !on("family") || !store?.canLink || !!blocked;
   el.accountPanel.hidden = !on("account");
@@ -557,6 +561,7 @@ function render() {
   renderGroups();
   renderProgress();
   renderWorkoutsPage();
+  renderChallenges();
   renderPanel();
   renderLinkPanel();
   setStatus();
@@ -867,7 +872,7 @@ function burstConfetti() {
 async function loadRecent() {
   if (!store?.daysSince) return;
   try {
-    const days = await store.daysSince(shiftDate(todayISO(), -60));
+    const days = await store.daysSince(shiftDate(todayISO(), -80));
     recent = Object.fromEntries(days.map((d) => [d.date, d.steps || 0]));
     recentLogs = Object.fromEntries(days.map((d) => [d.date, d]));
     render();
@@ -1872,7 +1877,16 @@ const BADGES = [
   { id: "champion", glyph: "#1", name: "Group champion", how: "Most points in a group" },
 ];
 
-// All your days we know about (last 60 days plus unsaved edits)
+// Challenge badges sit next to the regular ones
+const allBadges = () => [
+  ...BADGES,
+  ...CHALLENGES.map((c) => ({
+    id: "ch-" + c.id, glyph: c.emoji, name: c.name,
+    how: c.type === "streak" ? `${c.length} days in a row` : `${c.target} days by ${shortDate(c.end)}`,
+  })),
+];
+
+// All your days we know about (last 80 days plus unsaved edits)
 function knownDays() {
   const days = { ...(recentLogs || {}) };
   for (const [d, log] of Object.entries(drafts)) days[d] = log;
@@ -1917,6 +1931,7 @@ function earnedNow() {
   if (windowSum((d) => d.steps || 0) >= 55000) out.add("marathon");
   if ((profile?.groups || []).length) out.add("team");
   if (levelInfo().level >= 5) out.add("level5");
+  for (const c of CHALLENGES) if (challengeStatus(c).joined && challengeStatus(c).done) out.add("ch-" + c.id);
   return out;
 }
 
@@ -1966,7 +1981,10 @@ async function awardBadges(ids) {
   const stamp = Object.fromEntries(fresh.map((id) => [id, todayISO()]));
   profile = { ...profile, badges: { ...have, ...stamp } };
   await store.saveBadges(stamp).catch(() => {});
-  for (const id of fresh) showToast(`Badge unlocked: ${BADGES.find((b) => b.id === id).name}!`, "badge");
+  for (const id of fresh) {
+    const b = allBadges().find((x) => x.id === id);
+    showToast(id.startsWith("ch-") ? `Challenge complete: ${b.name}! ${b.glyph}` : `Badge unlocked: ${b.name}!`, "badge");
+  }
   burstConfetti();
   render();
 }
@@ -1994,9 +2012,10 @@ function renderProgress() {
 
   if (el.badgesPanel.hidden) return;
   const have = profile?.badges || {};
-  el.badgesCount.textContent = `${Object.keys(have).filter((id) => BADGES.some((b) => b.id === id)).length} of ${BADGES.length}`;
+  const shelf = allBadges();
+  el.badgesCount.textContent = `${Object.keys(have).filter((id) => shelf.some((b) => b.id === id)).length} of ${shelf.length}`;
   el.badgeGrid.replaceChildren();
-  for (const b of BADGES) {
+  for (const b of shelf) {
     const li = document.createElement("li");
     const got = !!have[b.id];
     li.className = "badge-tile" + (got ? "" : " is-locked");
@@ -2347,6 +2366,211 @@ function renderWorkoutsPage() {
   renderLibrary();
 }
 
+// ---------- Challenges ----------
+function dayLogFor(d) {
+  const raw = drafts[d] || recentLogs?.[d] || (d === date && !viewing ? dayLog : null);
+  return raw ? normalize({ ...raw, date: d }, d) : null;
+}
+
+function challengeDayOK(rule, d) {
+  const g = goalsFor(profile?.goals);
+  const log = dayLogFor(d);
+  switch (rule) {
+    case "points50": return (log ? dayXP(log, g) : Number(profile?.xpDays?.[d]) || 0) >= 50;
+    case "stepsWater": return !!log && (log.steps || 0) >= g.steps && log.water >= g.water;
+    case "stepsWorkout": return !!log && (log.steps || 0) >= g.steps && workoutMinutes(log) >= g.workout;
+    case "big3": return !!log && workoutMinutes(log) >= 30 && log.water >= g.water && (log.steps || 0) >= g.steps;
+    default: return false;
+  }
+}
+
+const myChallenge = (id) => (profile?.challenges || []).find((c) => c.id === id) || null;
+
+function challengeStatus(c) {
+  const today = todayISO();
+  const mine = myChallenge(c.id);
+  if (c.type === "streak") {
+    if (!mine) return { joined: false, count: 0, target: c.length };
+    let count = 0, broken = false;
+    for (let d = mine.joined; d < today && count < c.length; d = shiftDate(d, 1)) {
+      if (challengeDayOK(c.rule, d)) count++;
+      else { broken = true; break; }
+    }
+    if (!broken && count < c.length && challengeDayOK(c.rule, today)) count++;
+    return { joined: true, count, target: c.length, broken: broken && count < c.length, done: count >= c.length };
+  }
+  const upcoming = today < c.start;
+  const ended = today > c.end;
+  let count = 0;
+  if (!upcoming) {
+    const last = ended ? c.end : today;
+    for (let d = c.start; d <= last; d = shiftDate(d, 1)) if (challengeDayOK(c.rule, d)) count++;
+  }
+  const daysLeft = ended ? 0 : diffDays(upcoming ? c.start : today, c.end) + 1;
+  const done = count >= c.target;
+  return { joined: !!mine, count, target: c.target, upcoming, ended, daysLeft, done, possible: done || count + daysLeft >= c.target };
+}
+
+async function setChallenge(id, join) {
+  if (blocked || !store) return;
+  const list = (profile?.challenges || []).filter((c) => c.id !== id);
+  if (join) list.push({ id, joined: todayISO() });
+  profile = { ...(profile || {}), challenges: list };
+  render();
+  const c = CHALLENGES.find((x) => x.id === id);
+  if (join) { showToast(`You joined the ${c.name}! ${c.emoji}`, "goal"); burstConfetti(); }
+  try {
+    await store.saveProfile({ challenges: list });
+    syncGroups();
+    updateProgress(null, { quiet: true });
+  } catch (err) { handleWriteError(err); }
+}
+
+const challengeDates = (c) => c.type === "streak"
+  ? `Start any day · ${c.length} days in a row`
+  : `${shortDate(c.start)} – ${shortDate(c.end)}`;
+
+function challengeLine(c, st) {
+  if (c.type === "streak") {
+    if (!st.joined) return "Join to start today.";
+    if (st.done) return "Completed! Amazing discipline.";
+    if (st.broken) return "You missed a day. Restart to try again.";
+    return st.count ? `${st.count} of ${c.length} days in a row` : "Day 1 starts today: reach today's targets to count it.";
+  }
+  if (st.done) return st.ended ? "Completed!" : `Completed! ${st.count} days so far.`;
+  if (st.upcoming) return `Starts ${shortDate(c.start)}. Join now and be ready.`;
+  if (st.ended) return `Ended · ${st.count} of ${c.target} days`;
+  if (!st.joined) return st.count ? `You already have ${st.count} days that count. Join to take part!` : `${st.daysLeft} days left to join in.`;
+  if (!st.possible) return `${st.count} of ${c.target} days · out of reach this time, but every day counts!`;
+  return `${st.count} of ${c.target} days · ${st.daysLeft} day${st.daysLeft === 1 ? "" : "s"} left`;
+}
+
+function renderChallenges() {
+  // Card on Today
+  const showCard = !el.summaryPanel.hidden && !viewing && !!profile;
+  el.challengeCard.hidden = !showCard;
+  if (showCard) {
+    el.challengeCard.replaceChildren();
+    const active = CHALLENGES.filter((c) => myChallenge(c.id) && !challengeStatus(c).ended);
+    const head = document.createElement("div");
+    head.className = "challenge-card__head";
+    const t = document.createElement("strong");
+    const all = document.createElement("a");
+    all.href = "#challenges";
+    all.textContent = "All challenges ›";
+    if (active.length) {
+      t.textContent = "Your challenges";
+      head.append(t, all);
+      el.challengeCard.append(head);
+      for (const c of active.slice(0, 3)) {
+        const st = challengeStatus(c);
+        const row = document.createElement("div");
+        row.className = "ch-row";
+        const label = document.createElement("div");
+        label.className = "ch-row__label";
+        const n = document.createElement("span"); n.textContent = `${c.emoji} ${c.name}`;
+        const v = document.createElement("span"); v.textContent = st.done ? "Done!" : st.broken ? "Restart" : st.upcoming ? `Starts ${shortDate(c.start)}` : `${st.count}/${st.target}`;
+        label.append(n, v);
+        const bar = document.createElement("div"); bar.className = "ch-bar";
+        const fill = document.createElement("span"); fill.style.width = Math.min(100, (st.count / st.target) * 100) + "%";
+        bar.append(fill);
+        row.append(label, bar);
+        el.challengeCard.append(row);
+      }
+    } else {
+      const featured = CHALLENGES.find((c) => c.type === "window" && !challengeStatus(c).ended && !challengeStatus(c).upcoming) || CHALLENGES[0];
+      t.textContent = `${featured.emoji} ${featured.name} is on!`;
+      head.append(t, all);
+      const p = document.createElement("span");
+      p.textContent = featured.about;
+      const join = document.createElement("button");
+      join.type = "button";
+      join.className = "btn btn--small btn--fit";
+      join.textContent = "Join the challenge";
+      join.addEventListener("click", () => setChallenge(featured.id, true));
+      el.challengeCard.append(head, p, join);
+    }
+  }
+
+  // Challenges page
+  if (el.challengesPanel.hidden) return;
+  el.challengeList.replaceChildren();
+  const order = [...CHALLENGES].sort((a, b) => {
+    const sa = challengeStatus(a), sb = challengeStatus(b);
+    const rank = (s) => (s.ended ? 2 : s.upcoming ? 1 : 0);
+    return rank(sa) - rank(sb);
+  });
+  for (const c of order) {
+    const st = challengeStatus(c);
+    const card = document.createElement("article");
+    card.className = "challenge" + (st.joined ? " is-joined" : "");
+    const top = document.createElement("div");
+    top.className = "challenge__top";
+    const emoji = document.createElement("span"); emoji.className = "challenge__emoji"; emoji.textContent = c.emoji; emoji.setAttribute("aria-hidden", "true");
+    const names = document.createElement("div");
+    const h = document.createElement("h3"); h.textContent = c.name;
+    const dates = document.createElement("div"); dates.className = "challenge__dates"; dates.textContent = challengeDates(c);
+    names.append(h, dates);
+    top.append(emoji, names);
+    const about = document.createElement("p"); about.textContent = c.about;
+    const rule = document.createElement("p"); rule.textContent = `A day counts when you reach: ${RULE_TEXT[c.rule]}.`;
+    const status = document.createElement("div");
+    status.className = "challenge__status" + (st.done ? " is-done" : st.broken ? " is-broken" : "");
+    status.textContent = challengeLine(c, st);
+    const meter = document.createElement("div"); meter.className = "meter"; meter.setAttribute("aria-hidden", "true");
+    const fill = document.createElement("span"); fill.style.width = Math.min(100, (st.count / st.target) * 100) + "%";
+    meter.append(fill);
+    const actions = document.createElement("div"); actions.className = "row";
+    if (!st.joined && !st.ended) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "btn btn--small"; b.textContent = "Join";
+      b.addEventListener("click", () => setChallenge(c.id, true));
+      actions.append(b);
+    } else if (st.joined) {
+      if (st.broken) {
+        const r = document.createElement("button"); r.type = "button"; r.className = "btn btn--small"; r.textContent = "Restart from today";
+        r.addEventListener("click", () => setChallenge(c.id, true));
+        actions.append(r);
+      }
+      if (!st.done && !st.ended) {
+        const l = document.createElement("button"); l.type = "button"; l.className = "btn btn--ghost btn--small"; l.textContent = "Leave";
+        l.addEventListener("click", () => setChallenge(c.id, false));
+        actions.append(l);
+      }
+    }
+    card.append(top, about, rule, status, meter, actions);
+    el.challengeList.append(card);
+  }
+}
+
+// Leaderboards for challenges inside a group
+function renderGroupChallenges() {
+  const ids = CHALLENGES.map((c) => c.id).filter((id) => groupMembers.some((m) => m.ch?.[id]));
+  el.groupChallenges.hidden = !ids.length || !!(groupInfo?.gone || groupInfo?.removed);
+  el.groupChallenges.replaceChildren();
+  for (const id of ids) {
+    const c = CHALLENGES.find((x) => x.id === id);
+    const box = document.createElement("div");
+    box.className = "gch";
+    const h = document.createElement("h4");
+    const inIt = groupMembers.filter((m) => m.ch?.[id]).sort((a, b) => (b.ch[id].c || 0) - (a.ch[id].c || 0));
+    h.textContent = `${c.emoji} ${c.name} · ${inIt.length} of ${groupMembers.length} taking part`;
+    const ol = document.createElement("ol");
+    inIt.forEach((m, i) => {
+      const li = document.createElement("li");
+      const r = document.createElement("span"); r.textContent = `${i + 1}.`;
+      const n = document.createElement("span"); n.textContent = (m.name || "Member") + (m.id === store.uid ? " (you)" : "");
+      const v = document.createElement("span"); v.textContent = m.ch[id].done ? "Done! 🎉" : `${m.ch[id].c}/${m.ch[id].t}`;
+      const meter = document.createElement("div"); meter.className = "meter";
+      const fill = document.createElement("span"); fill.style.width = Math.min(100, ((m.ch[id].c || 0) / (m.ch[id].t || 1)) * 100) + "%";
+      meter.append(fill);
+      li.append(r, n, v, meter);
+      ol.append(li);
+    });
+    box.append(h, ol);
+    el.groupChallenges.append(box);
+  }
+}
+
 // ---------- Groups ----------
 // Each member keeps a small summary of their last 7 days in every group they're in.
 // Shared: steps, workout minutes, sleep hours, food item count and calories, and goals.
@@ -2389,7 +2613,12 @@ function memberData() {
     const log = drafts[d] || recentLogs?.[d] || (d === date && dayLog ? dayLog : null);
     if (log) days[d] = daySummary({ ...log, date: d }, g);
   }
-  return { name: displayName() || "Member", updatedAt: Date.now(), days, level: levelInfo().level, points: totalXP() };
+  const ch = {};
+  for (const c of CHALLENGES) {
+    const st = challengeStatus(c);
+    if (st.joined) ch[c.id] = { c: st.count, t: st.target, done: st.done };
+  }
+  return { name: displayName() || "Member", updatedAt: Date.now(), days, level: levelInfo().level, points: totalXP(), ch };
 }
 
 let groupSyncTimer = null;
@@ -2558,6 +2787,7 @@ function renderGroups() {
     (groupMembers.find((m) => m.id === store.uid)?.points || 0) === topPoints;
   if (meTop && !profile?.badges?.champion) awardBadges(["champion"]);
 
+  renderGroupChallenges();
   el.groupMembers.replaceChildren();
   sorted.forEach((m, i) => {
     const sm = m.days?.[today] || null;

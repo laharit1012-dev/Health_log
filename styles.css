@@ -1478,3 +1478,68 @@ a.who[aria-current="page"] { border-color: var(--accent); color: var(--accent); 
   box-shadow: 0 8px 20px rgb(0 0 0 / 0.18);
 }
 .update-banner .btn { background: #FFFFFF; color: #4338CA; }
+
+/* ---------- Challenges ---------- */
+.challenge-card {
+  display: grid;
+  gap: 0.625rem;
+  padding: 0.875rem 1rem;
+  border-radius: 1rem;
+  background: linear-gradient(135deg, #B91C1C, #15803D);
+  color: #FFFFFF;
+  text-decoration: none;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 0.15);
+}
+.challenge-card__head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.challenge-card strong { font-family: var(--font-display); font-size: 1.0625rem; }
+.challenge-card .btn { background: #FFFFFF; color: #14532D; }
+.challenge-card a { color: #FFFFFF; }
+.ch-row { display: grid; gap: 0.25rem; }
+.ch-row__label { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.875rem; font-weight: 700; }
+.ch-bar { height: 0.5rem; border-radius: 999px; background: rgb(255 255 255 / 0.3); overflow: hidden; }
+.ch-bar span { display: block; height: 100%; border-radius: inherit; background: #FFFFFF; }
+
+.challenge-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 0.75rem; }
+.challenge {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface);
+}
+.challenge.is-joined { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.challenge__top { display: flex; align-items: center; gap: 0.75rem; }
+.challenge__emoji {
+  width: 3rem; height: 3rem; flex-shrink: 0;
+  border-radius: 0.875rem;
+  display: grid; place-items: center;
+  font-size: 1.75rem;
+  background: var(--accent-soft);
+}
+.challenge h3 { margin: 0; font-size: 1.125rem; }
+.challenge p { margin: 0; color: var(--muted); font-size: 0.875rem; }
+.challenge__dates { font-size: 0.8125rem; color: var(--muted); }
+.challenge .meter span { background: var(--accent); }
+.challenge__status { font-weight: 700; font-size: 0.9375rem; }
+.challenge__status.is-done { color: var(--accent); }
+.challenge__status.is-broken { color: var(--danger); }
+
+.group-challenges { display: grid; gap: 0.75rem; }
+.gch {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  background: var(--bg);
+}
+.gch h4 { margin: 0; font-size: 1rem; }
+.gch ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.375rem; }
+.gch li { display: grid; grid-template-columns: 1.5rem minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
+.gch li .meter { grid-column: 2 / -1; }
+.gch .meter span { background: var(--accent); }
+
+/* Let content inside cards shrink on narrow screens instead of widening the page */
+.link-panel > *, .stack > *, .group-challenges > *, .gch > *, .member > * { min-width: 0; }
+.share-code { overflow-wrap: anywhere; }

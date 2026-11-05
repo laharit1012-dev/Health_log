@@ -54,6 +54,18 @@ The Cycle page shows the current phase (Period, Follicular, Ovulation, Luteal) w
 
 When someone views a person who shares their cycle tracker, they're asked once: **Get cycle updates?** If yes, the reminders job sends them a notification when that person's phase changes (between 9 AM and 9 PM their time). They can switch updates on or off any time under **Reminders → Cycle updates**.
 
+## Challenges
+
+The **Challenges** page (open it from the challenge card on Today) lists the challenges in `challenges.js`. Days count automatically from what people log.
+
+- 🎄 **Christmas Challenge** (Nov 5 – Dec 25): 50+ points on 35 days.
+- 🧃 **Post-Holiday Reset** (Dec 26 – 31): step and water goals every day.
+- 🎆 **New Year Challenge** (Jan): step and workout goals on 25 days.
+- ❄️ **Winter Arc** (Nov 1 – Feb 28): 50+ points on 90 days.
+- 🔥 **75-Day Challenge** (start any day): 30+ min workout plus water and step goals, 75 days in a row; missing a day means restarting.
+
+Finishing a challenge earns its own badge. Each group on the Family page shows a leaderboard for the challenges its members joined. To add next month's challenge, add an entry to `challenges.js` and release an update.
+
 ## Workouts
 
 The **Workouts** tab has weekly plans and a **video library of about 200 YouTube workouts in 10 folders**: Full body, Upper body, Lower body (each with bodyweight and dumbbell videos, mostly 20–30 min), Core, Cardio, Walking, Yoga, Pilates, Stretching and Period yoga. Videos are listed in `workouts.js`.

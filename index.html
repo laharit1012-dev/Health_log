@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=34">
+  <link rel="stylesheet" href="styles.css?v=35">
 </head>
 <body>
   <!-- Background wallpaper: full on Today, dimmed on the other pages -->
@@ -184,6 +184,7 @@
         </div>
         <div id="today-ring"></div>
       </div>
+      <div id="challenge-card" class="challenge-card" hidden></div>
       <dl id="summary" class="summary"></dl>
 
       <div class="goals-row">
@@ -365,6 +366,16 @@
         <p><strong>Daily title</strong>: 1+ points Warming up · 50+ Go-getter · 75+ Achiever · 100 Superstar.</p>
         <p><strong>Levels</strong>: a day with 50+ points is a consistent day. Get 5 consistent days in a week (Monday to Sunday) to move up a level. Levels never go down.</p>
       </details>
+    </section>
+
+    <!-- Challenges page -->
+    <section id="challenges-panel" class="stack" aria-labelledby="challenges-title" hidden>
+      <div class="section-head">
+        <h2 id="challenges-title">Challenges</h2>
+        <span class="hint">Days count automatically from your log</span>
+      </div>
+      <div id="challenge-list" class="challenge-list"></div>
+      <p class="hint">Join with your family or friends: each group shows a leaderboard for its challenges on the Family page.</p>
     </section>
 
     <!-- Workouts page: plans and videos -->
@@ -566,6 +577,7 @@
           <span id="group-count" class="hint"></span>
         </div>
         <p id="group-note" class="view-note" hidden></p>
+        <div id="group-challenges" class="group-challenges" hidden></div>
         <ol id="group-members" class="group-members" aria-label="Members, best first"></ol>
         <div class="log-block group-invite">
           <span class="block-label">Invite code</span>
@@ -641,13 +653,13 @@
   </nav>
 
   <footer class="site-footer">
-    <p>Health Log · version <span id="app-version">34</span> · <a href="privacy.html">Privacy policy</a></p>
+    <p>Health Log · version <span id="app-version">35</span> · <a href="privacy.html">Privacy policy</a></p>
   </footer>
 
   <!-- Goal celebrations -->
   <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <script type="module" src="app.js?v=34"></script>
+  <script type="module" src="app.js?v=35"></script>
 </body>
 </html>
