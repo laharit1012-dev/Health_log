@@ -8,12 +8,13 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-  sendPasswordResetEmail, signOut,
+  sendPasswordResetEmail, signOut, sendEmailVerification, reload,
+  EmailAuthProvider, reauthenticateWithCredential, deleteUser,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { firebaseConfig } from "./firebase-config.js?v=8";
+import { firebaseConfig } from "./firebase-config.js?v=9";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -168,6 +169,12 @@ function firestoreStore(db, uid) {
       const snap = await getDocs(collection(db, "users", uid, "days"));
       for (const d of snap.docs) await setDoc(shareDayRef(code, d.id), d.data());
     },
+    // Delete every document this person owns (logs, profile)
+    async deleteEverything() {
+      const snap = await getDocs(collection(db, "users", uid, "days"));
+      for (const d of snap.docs) await deleteDoc(d.ref);
+      await deleteDoc(userRef);
+    },
     async removeCopies(code) {
       const snap = await getDocs(collection(db, "shares", code, "days"));
       for (const d of snap.docs) await deleteDoc(d.ref);
@@ -306,6 +313,12 @@ const el = {
   shareCycleAsk: $("share-cycle-ask"), shareCycleYes: $("share-cycle-yes"), shareCycleNo: $("share-cycle-no"),
   shareCycleSetting: $("share-cycle-setting"), shareCycleState: $("share-cycle-state"), shareCycleToggle: $("share-cycle-toggle"), shareCopy: $("share-copy"), shareStop: $("share-stop"),
   shareConfirm: $("share-confirm"), shareStopYes: $("share-stop-yes"), shareStopNo: $("share-stop-no"), shareMsg: $("share-msg"),
+  accountPanel: $("account-panel"), accountEmail: $("account-email"),
+  deleteStart: $("delete-start"), deleteForm: $("delete-form"), deletePassword: $("delete-password"),
+  deleteMsg: $("delete-msg"), deleteConfirm: $("delete-confirm"), deleteCancel: $("delete-cancel"),
+  verifyPanel: $("verify-panel"), verifyEmail: $("verify-email"), verifyMsg: $("verify-msg"),
+  verifyDone: $("verify-done"), verifyResend: $("verify-resend"), verifySignout: $("verify-signout"),
+  installTip: $("install-tip"), installText: $("install-text"), installBtn: $("install-btn"), installClose: $("install-close"),
   linkForm: $("link-form"), linkCode: $("link-code"), linkMsg: $("link-msg"), linkList: $("link-list"),
 };
 
@@ -337,11 +350,13 @@ function render() {
   el.who.hidden = !me;
   if (me) el.whoName.textContent = name || me.email;
 
-  el.signin.hidden = !signedOut;
+  el.signin.hidden = !signedOut || !el.verifyPanel.hidden;
   el.dayBar.hidden = signedOut || !store;
   el.summaryPanel.hidden = signedOut || !store;
   el.panel.hidden = signedOut || !store;
   el.linkPanel.hidden = signedOut || !store?.canLink || !!blocked;
+  el.accountPanel.hidden = signedOut || !store;
+  if (me) el.accountEmail.textContent = me.email;
   el.people.hidden = signedOut || links.length === 0;
   if (signedOut || !store) return;
 
@@ -1086,7 +1101,7 @@ const auth_ = {
   form: $("auth-form"), nameField: $("auth-name-field"), name: $("auth-name"),
   genderField: $("auth-gender-field"), gender: $("auth-gender"),
   email: $("auth-email"), password: $("auth-password"), msg: $("auth-msg"),
-  submit: $("auth-submit"), forgot: $("auth-forgot"),
+  submit: $("auth-submit"), forgot: $("auth-forgot"), terms: $("auth-terms"),
 };
 let authMode = "signin";
 let pendingProfile = null; // { name, gender } typed when creating an account
@@ -1105,6 +1120,7 @@ function setAuthMode(mode) {
   auth_.submit.textContent = up ? "Create account" : "Sign in";
   auth_.password.autocomplete = up ? "new-password" : "current-password";
   auth_.forgot.hidden = up;
+  auth_.terms.hidden = !up;
   auth_.msg.textContent = "";
 }
 auth_.tabIn.addEventListener("click", () => setAuthMode("signin"));
@@ -1184,6 +1200,155 @@ el.signOutBtn.addEventListener("click", async () => {
   location.reload(); // start clean so nothing from this account stays on screen
 });
 
+// ---------- Email verification ----------
+const appUrl = () => location.origin + location.pathname;
+let currentUser = null;
+let startApp = null;       // set once Firebase is ready
+
+function showVerify(user) {
+  signedOut = true;
+  render();
+  el.signin.hidden = true;
+  el.verifyPanel.hidden = false;
+  el.verifyEmail.textContent = user.email || "your email";
+}
+
+el.verifyDone.addEventListener("click", async () => {
+  if (!currentUser) return;
+  el.verifyDone.disabled = true;
+  el.verifyMsg.textContent = "Checking…";
+  try {
+    await reload(currentUser);
+    if (currentUser.emailVerified) {
+      el.verifyMsg.textContent = "";
+      el.verifyPanel.hidden = true;
+      startApp(currentUser);
+    } else {
+      el.verifyMsg.textContent = "Not verified yet. Open the link in the email first, then tap this button again.";
+    }
+  } catch (err) {
+    el.verifyMsg.textContent = authMessage(err);
+  } finally {
+    el.verifyDone.disabled = false;
+  }
+});
+
+el.verifyResend.addEventListener("click", async () => {
+  if (!currentUser) return;
+  try {
+    await sendEmailVerification(currentUser, { url: appUrl() });
+    el.verifyMsg.textContent = "Sent. Check your inbox and spam folder.";
+  } catch (err) {
+    el.verifyMsg.textContent = err?.code === "auth/too-many-requests"
+      ? "An email was sent recently. Wait a few minutes before asking for another."
+      : authMessage(err);
+  }
+});
+
+el.verifySignout.addEventListener("click", async () => {
+  await signOut(auth);
+  location.reload();
+});
+
+// ---------- Delete my account ----------
+el.deleteStart.addEventListener("click", () => {
+  el.deleteForm.hidden = false;
+  el.deleteStart.hidden = true;
+  el.deletePassword.focus();
+});
+
+el.deleteCancel.addEventListener("click", () => {
+  el.deleteForm.hidden = true;
+  el.deleteStart.hidden = false;
+  el.deletePassword.value = "";
+  el.deleteMsg.textContent = "";
+});
+
+el.deleteForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!currentUser || !store) return;
+  const password = el.deletePassword.value;
+  if (!password) { el.deleteMsg.textContent = "Enter your password to confirm."; return; }
+  el.deleteConfirm.disabled = true;
+  el.deleteMsg.textContent = "Deleting…";
+  try {
+    // Firebase requires a recent sign-in before deleting an account
+    await reauthenticateWithCredential(currentUser, EmailAuthProvider.credential(currentUser.email, password));
+    for (const d of Object.keys(timers)) clearTimeout(timers[d]);
+    if (sharing?.code) await store.removeCopies(sharing.code);
+    await store.deleteEverything();
+    await deleteUser(currentUser);
+    try { sessionStorage.setItem("health-log-deleted", "1"); } catch {}
+    location.reload();
+  } catch (err) {
+    el.deleteConfirm.disabled = false;
+    el.deleteMsg.textContent = ["auth/invalid-credential", "auth/wrong-password", "auth/missing-password"].includes(err?.code)
+      ? "That password isn't right. Nothing was deleted."
+      : err?.code?.startsWith("auth/") ? authMessage(err)
+      : "Couldn't finish deleting. Check your connection and try again. Your account is still there.";
+  }
+});
+
+// ---------- Install to home screen ----------
+const INSTALL_KEY = "health-log-install-dismissed";
+let installEvent = null;
+
+function isStandalone() {
+  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+}
+
+function setupInstallTip() {
+  let dismissed = false;
+  try { dismissed = localStorage.getItem(INSTALL_KEY) === "1"; } catch {}
+  if (dismissed || isStandalone()) return;
+
+  const ua = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isAndroid = /Android/.test(ua);
+  // In-app browsers (WhatsApp, Instagram, Facebook, LinkedIn…) can't install
+  const inApp = /FBAN|FBAV|Instagram|LinkedInApp|WhatsApp|Line\//.test(ua) || (isIOS && !/Safari\//.test(ua));
+
+  if (isIOS) {
+    el.installText.textContent = inApp
+      ? "Open this page in Safari first (use the menu or compass icon), then tap Share and Add to Home Screen."
+      : "Tap the Share button, then Add to Home Screen.";
+    el.installTip.hidden = false;
+  } else if (isAndroid) {
+    el.installText.textContent = inApp
+      ? "Open this page in Chrome first, then use the menu (⋮) and tap Install app or Add to Home screen."
+      : "Open the browser menu (⋮) and tap Install app or Add to Home screen.";
+    el.installTip.hidden = false;
+  }
+}
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installEvent = e;
+  let dismissed = false;
+  try { dismissed = localStorage.getItem(INSTALL_KEY) === "1"; } catch {}
+  if (dismissed) return;
+  el.installText.textContent = "Open it like an app, straight from your home screen.";
+  el.installBtn.hidden = false;
+  el.installTip.hidden = false;
+});
+
+el.installBtn.addEventListener("click", async () => {
+  if (!installEvent) return;
+  installEvent.prompt();
+  await installEvent.userChoice.catch(() => {});
+  installEvent = null;
+  el.installTip.hidden = true;
+});
+
+el.installClose.addEventListener("click", () => {
+  el.installTip.hidden = true;
+  try { localStorage.setItem(INSTALL_KEY, "1"); } catch {}
+});
+
+window.addEventListener("appinstalled", () => { el.installTip.hidden = true; });
+
+setupInstallTip();
+
 // ---------- Start ----------
 render();
 
@@ -1206,20 +1371,34 @@ render();
     if (!user) {
       if (started) { location.reload(); return; }
       signedOut = true;
+      currentUser = null;
       render();
+      let deleted = false;
+      try { deleted = sessionStorage.getItem("health-log-deleted") === "1"; sessionStorage.removeItem("health-log-deleted"); } catch {}
+      if (deleted) auth_.msg.textContent = "Your account and all its data were deleted.";
       return;
     }
+    currentUser = user;
+    const s = firestoreStore(db, user.uid);
+    if (pendingProfile) {
+      // Just created: save the profile and send the verification email
+      const prof = pendingProfile;
+      pendingProfile = null;
+      profile = { ...prof, cycle: null };
+      try { await s.saveProfile(prof); } catch {}
+      try { await sendEmailVerification(user, { url: appUrl() }); } catch {}
+    }
+    if (!user.emailVerified) { showVerify(user); return; }
+    startApp(user);
+  });
+
+  startApp = (user) => {
     if (started) return;
     started = true;
     signedOut = false;
+    el.verifyPanel.hidden = true;
     me = { email: user.email || "" };
-    const s = firestoreStore(db, user.uid);
-    if (pendingProfile) {
-      profile = { ...pendingProfile, cycle: null };
-      try { await s.saveProfile(pendingProfile); } catch {}
-      pendingProfile = null;
-    }
-    start(s);
+    start(firestoreStore(db, user.uid));
     render();
-  });
+  };
 })();

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Privacy policy · Health Log</title>
+  <meta name="description" content="How Health Log handles your data.">
+  <script>
+    try { var t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,700&display=swap">
+  <link rel="stylesheet" href="styles.css?v=9">
+  <style>
+    .policy { max-width: 42rem; margin: 0 auto; padding-block: 2rem 3rem;
+      padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+    .policy h1 { font-size: clamp(1.75rem, 5vw, 2.25rem); margin-bottom: 0.25rem; }
+    .policy h2 { margin-top: 2rem; font-size: 1.25rem; }
+    .policy p, .policy li { max-width: 65ch; }
+    .policy ul { padding-left: 1.25rem; }
+    .policy li + li { margin-top: 0.375rem; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="brand" href="./" style="color: inherit; text-decoration: none">Health Log</a>
+      <a href="./">Back to the app</a>
+    </div>
+  </header>
+
+  <main class="policy">
+    <h1>Privacy policy</h1>
+    <p class="hint">Last updated: November 5, 2026</p>
+
+    <p>Health Log is a small personal project for logging daily health habits with family and friends. This page explains what it stores, who can see it, and how to delete it.</p>
+
+    <h2>What the app stores</h2>
+    <ul>
+      <li><strong>Account:</strong> your email address and a password. The password is handled by Google Firebase Authentication; the app never sees or stores it.</li>
+      <li><strong>Profile:</strong> the name and gender you enter.</li>
+      <li><strong>Daily logs:</strong> steps, water, sleep times, workouts and food you enter.</li>
+      <li><strong>Period tracker (women only):</strong> the period start dates and cycle length you enter.</li>
+      <li><strong>Sharing:</strong> your share code, if you create one, and the codes of people you've linked to.</li>
+    </ul>
+    <p>The app does not use ads, analytics or tracking, and it doesn't collect your location or contacts. Your theme choice (light or dark) is saved only on your own device.</p>
+
+    <h2>Where it's stored</h2>
+    <p>Data is stored in Google Firebase (Cloud Firestore and Firebase Authentication), run by Google. It's sent over encrypted connections and protected by database rules that let each person read and change only their own data.</p>
+
+    <h2>Who can see your data</h2>
+    <ul>
+      <li><strong>Only you</strong>, by default.</li>
+      <li><strong>People you give your share code to</strong> can view (never change) your daily logs. Your period tracker is included only if you choose to share it, and you can change that at any time.</li>
+      <li>Turning off sharing removes the shared copy straight away, and the old code stops working.</li>
+      <li>Your data is never sold or given to anyone else.</li>
+    </ul>
+
+    <h2>Deleting your data</h2>
+    <p>In the app, go to <strong>Account → Delete my account</strong>. This permanently deletes your account, all your logs, your period data and any shared copy. It can't be undone.</p>
+
+    <h2>Not medical advice</h2>
+    <p>Health Log is a personal log. Goals and expected period dates are simple estimates from what you enter. They are not medical advice and shouldn't be used for contraception or diagnosis.</p>
+
+    <h2>Contact</h2>
+    <p>Questions or requests about your data: open an issue at <a href="https://github.com/laharit1012-dev/Health_log/issues">github.com/laharit1012-dev/Health_log/issues</a>. Don't include health details there, as issues are public.</p>
+
+    <h2>Changes</h2>
+    <p>If this policy changes, the date at the top will be updated.</p>
+  </main>
+</body>
+</html>

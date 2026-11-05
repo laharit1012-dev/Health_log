@@ -3,7 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Daily Health Log</title>
+  <title>Health Log</title>
+  <meta name="description" content="Log your daily steps, water, sleep, workouts and food. Private to you; share with family when you choose.">
+
+  <!-- App icon and home-screen install -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Health Log">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#17201D" media="(prefers-color-scheme: dark)">
+
+  <!-- Link preview card (WhatsApp, Facebook, LinkedIn, Instagram, iMessage) -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Health Log">
+  <meta property="og:title" content="Health Log">
+  <meta property="og:description" content="Your daily health, private to you. Log steps, water, sleep, workouts and food, and share with family when you choose.">
+  <meta property="og:url" content="https://laharit1012-dev.github.io/Health_log/">
+  <meta property="og:image" content="https://laharit1012-dev.github.io/Health_log/icons/share-preview.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Health Log app icon: a white heart with a pulse line on teal">
+  <meta name="twitter:card" content="summary_large_image">
   <!-- Set the saved theme before the page paints, so there's no flash of the wrong theme -->
   <script>
     try {
@@ -14,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=8">
+  <link rel="stylesheet" href="styles.css?v=9">
 </head>
 <body>
   <header class="site-header">
@@ -39,6 +64,30 @@
   </header>
 
   <main>
+    <!-- Home-screen install tip (hidden once installed or dismissed) -->
+    <aside id="install-tip" class="install-tip" aria-label="Install the app" hidden>
+      <img src="icons/icon-192.png" alt="" width="44" height="44">
+      <div class="install-tip__text">
+        <strong>Add Health Log to your home screen</strong>
+        <p id="install-text"></p>
+      </div>
+      <button id="install-btn" class="btn btn--small" type="button" hidden>Install</button>
+      <button id="install-close" class="food-row__delete" type="button" aria-label="Dismiss">✕</button>
+    </aside>
+
+    <!-- Email verification -->
+    <section id="verify-panel" class="signin" hidden>
+      <div class="stack stack--tight">
+        <h2>Check your email</h2>
+        <p>We sent a verification link to <strong id="verify-email"></strong>. Open it, then come back and tap <strong>I've verified my email</strong>. Check your spam folder if you don't see it.</p>
+      </div>
+      <p id="verify-msg" class="auth-msg" aria-live="polite"></p>
+      <button id="verify-done" class="btn" type="button">I've verified my email</button>
+      <div class="row">
+        <button id="verify-resend" class="btn btn--ghost btn--small" type="button">Send the email again</button>
+        <button id="verify-signout" class="btn btn--ghost btn--small" type="button">Sign out</button>
+      </div>
+    </section>
     <!-- Date picker -->
     <section id="day-bar" class="day-bar" aria-label="Choose a day" hidden>
       <button id="prev-day" class="icon-btn" type="button" aria-label="Previous day">‹</button>
@@ -87,6 +136,7 @@
           <input id="auth-password" type="password" autocomplete="current-password" minlength="6" required>
         </label>
         <p id="auth-msg" class="auth-msg" aria-live="polite"></p>
+        <p id="auth-terms" class="hint" hidden>By creating an account, you agree to the <a href="privacy.html">privacy policy</a>.</p>
         <button id="auth-submit" class="btn" type="submit">Sign in</button>
         <button id="auth-forgot" class="link-btn" type="button">Forgot password?</button>
       </form>
@@ -305,12 +355,35 @@
         </div>
       </div>
     </section>
+
+    <!-- Account: privacy and deletion -->
+    <section id="account-panel" class="link-panel" aria-labelledby="account-title" hidden>
+      <div class="stack stack--tight">
+        <h2 id="account-title">Account</h2>
+        <p class="hint">Signed in as <strong id="account-email"></strong>. Read how your data is handled in the <a href="privacy.html">privacy policy</a>.</p>
+      </div>
+      <div>
+        <button id="delete-start" class="btn btn--ghost btn--danger" type="button">Delete my account</button>
+      </div>
+      <form id="delete-form" class="confirm" hidden novalidate>
+        <p><strong>This permanently deletes your account and everything in it:</strong> all your logs, your period data, and your share code. People linked to you will no longer see your log. This can't be undone.</p>
+        <label class="field">
+          <span>Enter your password to confirm</span>
+          <input id="delete-password" type="password" autocomplete="current-password">
+        </label>
+        <p id="delete-msg" class="auth-msg" aria-live="polite"></p>
+        <div class="row">
+          <button id="delete-confirm" class="btn btn--danger-solid" type="submit">Delete everything</button>
+          <button id="delete-cancel" class="btn btn--ghost" type="button">Cancel</button>
+        </div>
+      </form>
+    </section>
   </main>
 
   <footer class="site-footer">
-    <p>Health Log · version <span id="app-version">8</span></p>
+    <p>Health Log · version <span id="app-version">9</span> · <a href="privacy.html">Privacy policy</a></p>
   </footer>
 
-  <script type="module" src="app.js?v=8"></script>
+  <script type="module" src="app.js?v=9"></script>
 </body>
 </html>

@@ -750,3 +750,28 @@ main {
   font-size: 0.8125rem;
 }
 .site-footer p { margin: 0; }
+
+/* ---------- Install tip ---------- */
+.install-tip {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  background: var(--surface);
+}
+.install-tip img { border-radius: 0.625rem; flex-shrink: 0; }
+.install-tip__text { flex: 1; min-width: 0; }
+.install-tip__text p { margin: 0.125rem 0 0; color: var(--muted); font-size: 0.875rem; }
+
+/* ---------- Links, danger buttons ---------- */
+a { color: var(--accent); font-weight: 700; text-underline-offset: 0.2em; }
+.site-footer a { font-weight: 400; color: var(--muted); }
+
+:root { --danger: #B42318; --on-danger: #FFFFFF; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --danger: #F97066; --on-danger: #0E1412; } }
+:root[data-theme="dark"] { --danger: #F97066; --on-danger: #0E1412; }
+
+.btn--danger { color: var(--danger); border-color: var(--danger); }
+.btn--danger-solid { background: var(--danger); color: var(--on-danger); }

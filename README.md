@@ -16,6 +16,20 @@ Each day you can log:
 
 Use the arrows at the top to look back at earlier days. **Edit profile** changes your name and gender. Gender is asked when you create an account.
 
+## Install it like an app
+
+Open the link, then:
+- **iPhone/iPad (Safari):** tap **Share** → **Add to Home Screen**.
+- **Android (Chrome):** tap **Install** in the app's tip, or menu (⋮) → **Install app**.
+
+It then has its own **Health Log** icon and opens full screen. Shared links show a preview card with the icon in WhatsApp, Facebook, LinkedIn and iMessage.
+
+## Account and privacy
+
+- New accounts confirm their email address with a link before they can use the app.
+- **Account → Delete my account** permanently deletes the account, all logs, period data and any shared copy (asks for the password first).
+- See the [privacy policy](privacy.html).
+
 ## Seeing each other's logs (share codes)
 
 Under **Link with family**:
@@ -42,6 +56,8 @@ The switch in the header flips between light and dark, and the choice is remembe
 - `app.js`: sign-in, logging, saving and share codes
 - `firebase-config.js`: Firebase project settings
 - `firestore.rules`: database security rules (paste into Firebase console → Firestore → Rules)
+- `privacy.html`: privacy policy
+- `manifest.webmanifest`, `icons/`: app icon, home-screen install and link preview image
 
 ## Releasing an update
 
