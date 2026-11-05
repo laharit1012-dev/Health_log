@@ -14,7 +14,7 @@ import {
 import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { firebaseConfig } from "./firebase-config.js?v=9";
+import { firebaseConfig } from "./firebase-config.js?v=10";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
