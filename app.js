@@ -15,7 +15,7 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=14";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=16";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -363,6 +363,7 @@ const el = {
   remPanel: $("reminders-panel"), remNote: $("rem-note"), remBody: $("rem-body"), remMsg: $("rem-msg"), remTest: $("rem-test"),
   remWaterOn: $("rem-water-on"), remWaterFrom: $("rem-water-from"), remWaterTo: $("rem-water-to"), remWaterEvery: $("rem-water-every"),
   remWorkoutOn: $("rem-workout-on"), remWorkoutTime: $("rem-workout-time"),
+  tabbar: $("tabbar"),
   installTip: $("install-tip"), installText: $("install-text"), installBtn: $("install-btn"), installClose: $("install-close"),
   linkForm: $("link-form"), linkCode: $("link-code"), linkMsg: $("link-msg"), linkList: $("link-list"),
 };
@@ -382,6 +383,25 @@ function setValue(input, value) {
 
 const caloriesOf = (log) => log.foods.reduce((sum, f) => sum + (Number(f.calories) || 0), 0);
 
+// ---------- Pages ----------
+const ROUTES = ["today", "family", "reminders", "account"];
+const routeFromHash = () => {
+  const r = location.hash.replace("#", "");
+  return ROUTES.includes(r) ? r : "today";
+};
+let route = routeFromHash();
+
+function goTo(r) {
+  if (location.hash !== "#" + r) location.hash = r; // fires hashchange
+  else { route = r; render(); }
+}
+
+window.addEventListener("hashchange", () => {
+  route = routeFromHash();
+  render();
+  window.scrollTo(0, 0);
+});
+
 // ---------- Rendering ----------
 let signedOut = false;
 
@@ -396,14 +416,23 @@ function render() {
   if (me) el.whoName.textContent = name || me.email;
 
   el.signin.hidden = !signedOut || !el.verifyPanel.hidden;
-  el.dayBar.hidden = signedOut || !store;
-  el.summaryPanel.hidden = signedOut || !store;
-  el.panel.hidden = signedOut || !store;
-  el.linkPanel.hidden = signedOut || !store?.canLink || !!blocked;
-  el.accountPanel.hidden = signedOut || !store;
-  el.remPanel.hidden = signedOut || !store || !!viewing || !!blocked;
+  const inApp = !signedOut && !!store;
+  const on = (r) => inApp && route === r;
+  el.tabbar.hidden = !inApp;
+  el.installTip.hidden = !(installWanted && (!inApp || route === "today"));
+  document.body.classList.toggle("has-tabbar", inApp);
+  for (const a of el.tabbar.querySelectorAll("a")) {
+    if (a.dataset.route === route) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  }
+  el.dayBar.hidden = !on("today");
+  el.summaryPanel.hidden = !on("today");
+  el.panel.hidden = !on("today");
+  el.linkPanel.hidden = !on("family") || !store?.canLink || !!blocked;
+  el.accountPanel.hidden = !on("account");
+  el.remPanel.hidden = !on("reminders") || !!blocked;
   if (me) el.accountEmail.textContent = me.email;
-  el.people.hidden = signedOut || links.length === 0;
+  el.people.hidden = !on("today") || links.length === 0;
   if (signedOut || !store) return;
 
   renderPeople();
@@ -459,7 +488,7 @@ function renderLinkPanel() {
     view.className = "btn btn--ghost btn--small";
     view.textContent = viewing === p.code ? "Viewing" : "View";
     view.disabled = viewing === p.code;
-    view.addEventListener("click", () => { viewPerson(p.code); window.scrollTo({ top: 0, behavior: "smooth" }); });
+    view.addEventListener("click", () => { viewPerson(p.code); goTo("today"); });
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "food-row__delete";
@@ -1108,6 +1137,7 @@ async function createShareCode() {
     el.renameGender.value = profile?.gender || "";
     el.renameForm.hidden = false;
     render();
+    goTo("today");
     el.panel.scrollIntoView({ behavior: "smooth", block: "start" });
     el.renameInput.focus();
     el.shareMsg.textContent = "First, save the name linked people will see. Your code is created right after.";
@@ -1235,7 +1265,7 @@ el.linkForm.addEventListener("submit", async (e) => {
     el.linkCode.value = "";
     el.linkMsg.textContent = `Linked. You can now see ${name ? name + "'s" : "their"} log.`;
     viewPerson(code);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    goTo("today");
   } catch {
     el.linkMsg.textContent = "Couldn't link right now. Check your connection and try again.";
   }
@@ -1530,7 +1560,7 @@ async function saveReminders(r, device) {
 }
 
 async function toggleReminder(kind, input) {
-  if (readOnly() || pushState !== "ok") return;
+  if (blocked || !store || pushState !== "ok") return;
   const before = profile?.reminders || null;
   const r = remindersNow();
   r[kind].on = input.checked;
@@ -1699,6 +1729,7 @@ el.deleteForm.addEventListener("submit", async (e) => {
 // ---------- Install to home screen ----------
 const INSTALL_KEY = "health-log-install-dismissed";
 let installEvent = null;
+let installWanted = false;   // the tip applies to this device; shown on the Today page
 
 function isStandalone() {
   return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
@@ -1719,13 +1750,14 @@ function setupInstallTip() {
     el.installText.textContent = inApp
       ? "Open this page in Safari first (use the menu or compass icon), then tap Share and Add to Home Screen."
       : "Tap the Share button, then Add to Home Screen.";
-    el.installTip.hidden = false;
+    installWanted = true;
   } else if (isAndroid) {
     el.installText.textContent = inApp
       ? "Open this page in Chrome first, then use the menu (⋮) and tap Install app or Add to Home screen."
       : "Open the browser menu (⋮) and tap Install app or Add to Home screen.";
-    el.installTip.hidden = false;
+    installWanted = true;
   }
+  render();
 }
 
 window.addEventListener("beforeinstallprompt", (e) => {
@@ -1736,7 +1768,8 @@ window.addEventListener("beforeinstallprompt", (e) => {
   if (dismissed) return;
   el.installText.textContent = "Open it like an app, straight from your home screen.";
   el.installBtn.hidden = false;
-  el.installTip.hidden = false;
+  installWanted = true;
+  render();
 });
 
 el.installBtn.addEventListener("click", async () => {
@@ -1744,15 +1777,17 @@ el.installBtn.addEventListener("click", async () => {
   installEvent.prompt();
   await installEvent.userChoice.catch(() => {});
   installEvent = null;
-  el.installTip.hidden = true;
+  installWanted = false;
+  render();
 });
 
 el.installClose.addEventListener("click", () => {
-  el.installTip.hidden = true;
+  installWanted = false;
+  render();
   try { localStorage.setItem(INSTALL_KEY, "1"); } catch {}
 });
 
-window.addEventListener("appinstalled", () => { el.installTip.hidden = true; });
+window.addEventListener("appinstalled", () => { installWanted = false; render(); });
 
 setupInstallTip();
 

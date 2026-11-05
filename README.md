@@ -6,6 +6,12 @@ A private daily health log for family and friends.
 
 Everyone signs up with their own email and password and sees only their own log.
 
+The app has four pages, switched with the tab bar at the bottom:
+- **Today:** your day summary, goals and the daily log.
+- **Family:** share codes and linked family members.
+- **Reminders:** water and workout reminders.
+- **Account:** sign out, privacy policy and Delete my account.
+
 Each day you can log:
 - **Steps**: progress toward 10,000
 - **Water**: glasses (250 ml each), goal 8
@@ -43,7 +49,7 @@ It then has its own **Health Log** icon and opens full screen. Shared links show
 ## Account and privacy
 
 - New accounts confirm their email address with a link before they can use the app.
-- **Account → Delete my account** permanently deletes the account, all logs, period data and any shared copy (asks for the password first).
+- **Account page → Delete my account** permanently deletes the account, all logs, period data and any shared copy (asks for the password first).
 - See the [privacy policy](privacy.html).
 
 ## Seeing each other's logs (share codes)

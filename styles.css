@@ -906,3 +906,46 @@ a { color: var(--accent); font-weight: 700; text-underline-offset: 0.2em; }
 .switch:disabled { opacity: 0.5; cursor: default; }
 
 #rem-msg:empty { display: none; }
+
+/* ---------- Pages tab bar ---------- */
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding-top: 0.375rem;
+  padding-bottom: max(0.375rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(8px, env(safe-area-inset-left, 0px));
+  padding-right: max(8px, env(safe-area-inset-right, 0px));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.tabbar a {
+  display: grid;
+  justify-items: center;
+  gap: 0.125rem;
+  padding: 0.375rem 0.25rem;
+  border-radius: 0.625rem;
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.75rem;
+  text-decoration: none;
+  max-width: 8rem;
+  width: 100%;
+  justify-self: center;
+}
+
+.tabbar svg { width: 1.5rem; height: 1.5rem; }
+
+.tabbar a[aria-current="page"] {
+  color: var(--accent);
+  font-weight: 700;
+  background: var(--accent-soft);
+}
+
+/* Leave room so the tab bar never covers the end of a page */
+body.has-tabbar { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px)); }
