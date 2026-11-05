@@ -7,14 +7,14 @@
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
+  initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
   sendPasswordResetEmail, signOut, sendEmailVerification, reload,
   EmailAuthProvider, reauthenticateWithCredential, deleteUser,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { firebaseConfig } from "./firebase-config.js?v=10";
+import { firebaseConfig } from "./firebase-config.js?v=11";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -1363,7 +1363,8 @@ render();
     return;
   }
   const app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
+  // Keep people signed in on this device (also inside home-screen web apps)
+  auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
   const db = getFirestore(app);
   let started = false;
 
@@ -1388,7 +1389,11 @@ render();
       try { await s.saveProfile(prof); } catch {}
       try { await sendEmailVerification(user, { url: appUrl() }); } catch {}
     }
-    if (!user.emailVerified) { showVerify(user); return; }
+    if (!user.emailVerified) {
+      // They may have verified in another browser (e.g. Safari) since this copy last checked
+      try { await reload(user); } catch {}
+      if (!user.emailVerified) { showVerify(user); return; }
+    }
     startApp(user);
   });
 
