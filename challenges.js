@@ -68,6 +68,16 @@ export const CHALLENGES = [
     rule: "big3",
     about: "75 days in a row: work out 30+ minutes, reach your water goal and your step goal. Miss a day and you start again.",
   },
+  {
+    id: "weightloss-8w",
+    name: "8-Week Weight Loss Challenge",
+    emoji: "⚖️",
+    type: "days",
+    length: 56,
+    target: 40,
+    rule: "points50",
+    about: "8 weeks of healthy habits: reach 50+ points on 40 of 56 days and weigh in once a week to watch your progress. The winner is chosen by points (consistency), not by how much weight is lost.",
+  },
   // Fasting challenges: start the day you join; reach `target` fasting days within `length` days
   {
     id: "fast-if16",

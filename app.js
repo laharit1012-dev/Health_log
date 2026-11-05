@@ -15,11 +15,11 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove, deleteField,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=46";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=46";
-import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=46";
-import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=46";
-import { SHOP, shopItem } from "./shop.js?v=46";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=47";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=47";
+import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=47";
+import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=47";
+import { SHOP, shopItem, shopRegion } from "./shop.js?v=47";
 
 // ---------- Challenge invites ----------
 // A link like ?invite=christmas-2026&group=K7QF-9XMA-2PDW is kept until the person signs in,
@@ -42,7 +42,7 @@ function clearInvite() { try { localStorage.removeItem(INVITE_KEY); } catch {} }
 
 // ---------- App version and updates ----------
 // Bump APP_VERSION and version.json together when publishing an update.
-const APP_VERSION = 46;
+const APP_VERSION = 47;
 
 // Open the newest version: a unique address makes the phone fetch fresh files
 function reloadFresh() {
@@ -216,7 +216,7 @@ function firestoreStore(db, uid, email = "") {
     kind: "account",
     canLink: true,
     watchProfile: (cb, onError) => watch(userRef, (d, m) => cb(d
-      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null, groups: Array.isArray(d.groups) ? d.groups : [], xpDays: d.xpDays || {}, badges: d.badges || {}, plan: d.plan || null, equip: d.equip || "bodyweight", challenges: Array.isArray(d.challenges) ? d.challenges : [], sessions: d.sessions || null, fast: d.fast || null, boardHidden: d.boardHidden === true }
+      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null, groups: Array.isArray(d.groups) ? d.groups : [], xpDays: d.xpDays || {}, badges: d.badges || {}, plan: d.plan || null, equip: d.equip || "bodyweight", challenges: Array.isArray(d.challenges) ? d.challenges : [], sessions: d.sessions || null, fast: d.fast || null, boardHidden: d.boardHidden === true, body: d.body || null, weights: Array.isArray(d.weights) ? d.weights : [] }
       : null, m), onError),
     watchSharing: (cb, onError) => watch(userRef, (d, m) => cb(d?.shareCode ? { code: d.shareCode, cycle: !!d.shareCycle } : null, m), onError),
     watchLinks: (cb, onError) => watch(userRef, (d, m) => cb({ people: Array.isArray(d?.links) ? d.links : [] }, m), onError),
@@ -567,9 +567,10 @@ const el = {
   adminPanel: $("admin-panel"), adminLink: $("admin-link"), remLink: document.querySelector('#account-panel a[href="#reminders"]'),
   adminFind: $("admin-find"), adminEmail: $("admin-email"), adminPerson: $("admin-person"), adminPersonName: $("admin-person-name"),
   adminPass: $("admin-pass"), adminStart: $("admin-start"), adminEnd: $("admin-end"), adminGrant: $("admin-grant"),
-  boardPanel: $("board-panel"), boardEmoji: $("board-emoji"), boardTitle: $("board-title"), boardSub: $("board-sub"),
-  boardTabs: $("board-tabs"), boardMe: $("board-me"), boardPodium: $("board-podium"), boardList: $("board-list"),
-  boardEmpty: $("board-empty"), boardShow: $("board-show"),
+  boardBtn: $("board-btn"), boardRank: $("board-rank"), boardSheet: $("board-sheet"), boardClose: $("board-close"),
+  boardEmoji: $("board-emoji"), boardName: $("board-name"), boardSub: $("board-sub"), boardTabs: $("board-tabs"),
+  boardMe: $("board-me"), boardMeRank: $("board-me-rank"), boardMeOf: $("board-me-of"), boardMeText: $("board-me-text"),
+  boardChart: $("board-chart"), boardEmpty: $("board-empty"), boardShow: $("board-show"),
   adminMsg: $("admin-msg"), adminList: $("admin-list"), adminBoardCh: $("admin-board-ch"), adminBoard: $("admin-board"),
   fastActive: $("fast-active"), fastElapsed: $("fast-elapsed"), fastGoal: $("fast-goal"), fastBar: $("fast-bar"),
   fastWhen: $("fast-when"), fastEnd: $("fast-end"), fastCancel: $("fast-cancel"), fastForm: $("fast-form"),
@@ -577,6 +578,12 @@ const el = {
   fastWarnNo: $("fast-warn-no"), fastMsg: $("fast-msg"), fastList: $("fast-list"), fastTotal: $("fast-total"),
   quick: $("quick-sheet"), quickClose: $("quick-close"), quickAll: $("quick-all"), quickCycle: $("quick-cycle"),
   logBack: $("log-back"),
+  wSetup: $("weight-setup"), wUnits: $("w-units"), wHeightImperial: $("w-height-imperial"), wHeightMetric: $("w-height-metric"),
+  wFt: $("w-ft"), wIn: $("w-in"), wCm: $("w-cm"), wNow: $("w-now"), wGoal: $("w-goal"), wNowLabel: $("w-now-label"),
+  wGoalLabel: $("w-goal-label"), wSetupMsg: $("w-setup-msg"), wSetupCancel: $("w-setup-cancel"), wProgress: $("weight-progress"),
+  wStatNow: $("w-stat-now"), wStatChange: $("w-stat-change"), wStatLeft: $("w-stat-left"), wGoalBar: $("w-goal-bar"),
+  wGoalText: $("w-goal-text"), wChart: $("weight-chart"), wChartTitle: $("weight-chart-title"), weighIn: $("weigh-in"),
+  weighValue: $("weigh-value"), weighMsg: $("weigh-msg"), weighList: $("weigh-list"), wEdit: $("weight-edit"), wTotal: $("weight-total"),
   fab: $("log-fab"), logClose: $("log-close"), backdrop: $("sheet-backdrop"), inviteNote: $("invite-note"),
   groupChallenges: $("group-challenges"),
   tabbar: $("tabbar"), tabPeriod: $("tab-period"), periodPanel: $("period-panel"),
@@ -600,12 +607,10 @@ function setValue(input, value) {
 const caloriesOf = (log) => log.foods.reduce((sum, f) => sum + (Number(f.calories) || 0), 0);
 
 // ---------- Pages ----------
-const ROUTES = ["today", "cycle", "workouts", "family", "reminders", "account", "challenges", "admin", "board"];
-let boardId = null;        // challenge shown on the leaderboard page (#board/<id>)
+const ROUTES = ["today", "cycle", "workouts", "family", "reminders", "account", "challenges", "admin"];
 const routeFromHash = () => {
   let r = location.hash.replace("#", "");
   if (r === "period") r = "cycle"; // older links
-  if (r.startsWith("board/")) { boardId = decodeURIComponent(r.slice(6)); r = "board"; }
   return ROUTES.includes(r) ? r : "today";
 };
 let route = routeFromHash();
@@ -617,6 +622,7 @@ function goTo(r) {
 
 window.addEventListener("hashchange", () => {
   route = routeFromHash();
+  boardOpen = false;
   logSheet = false;
   quickSheet = false;
   logSection = null;
@@ -698,12 +704,11 @@ function render() {
   el.quick.hidden = !quick;
   el.quickCycle.hidden = !isFemale();
   el.fab.hidden = !on("today") || !!viewing || sheet || quick;
-  el.backdrop.hidden = !sheet && !quick;
-  document.body.classList.toggle("sheet-open", sheet || quick);
+  el.backdrop.hidden = !sheet && !quick && !boardOpen;
+  document.body.classList.toggle("sheet-open", sheet || quick || boardOpen);
   el.periodPanel.hidden = !on("cycle");
   el.workoutsPanel.hidden = !on("workouts");
   el.challengesPanel.hidden = !on("challenges");
-  el.boardPanel.hidden = !on("board");
   el.linkPanel.hidden = !on("family") || !store?.canLink || !!blocked;
   el.groupsPanel.hidden = !on("family") || !store?.canLink || !!blocked;
   el.accountPanel.hidden = !on("account");
@@ -739,6 +744,7 @@ function render() {
     el.editName.hidden = true;
   }
   renderFasting();
+  renderWeight();
   renderQuick();
   renderLinkPanel();
   setStatus();
@@ -810,7 +816,7 @@ function renderSummary() {
   const addStat = (label, value, unit, isMet) => {
     const wrap = document.createElement("div");
     wrap.className = "stat" + (isMet ? " is-met" : "");
-    const section = { Steps: "steps", Water: "water", Sleep: "sleep", Workouts: "workout", Food: "food", Fasting: "fast", Fasted: "fast", Cycle: "cycle" }[label];
+    const section = { Steps: "steps", Water: "water", Sleep: "sleep", Workouts: "workout", Food: "food", Fasting: "fast", Fasted: "fast", Cycle: "cycle", Weight: "weight" }[label];
     if (section) wrap.dataset.section = section;
     const dt = document.createElement("dt");
     dt.textContent = label;
@@ -847,6 +853,11 @@ function renderSummary() {
     addStat("Fasting", formatHours(h), `/ ${plan.hours}h`, h >= plan.hours);
   } else if (log.fasts.length) {
     addStat("Fasted", formatHours(fastHours(log)), "", fastHours(log) >= FASTED_FOOD_POINTS);
+  }
+  // Weight: your own, only if you set it up
+  if (!viewing && profile?.body && latestWeight()) {
+    const ch = weightChange();
+    addStat("Weight", showWeight(latestWeight().kg), weighInDue() ? "weigh-in due" : ch ? `${ch < 0 ? "↓" : "↑"} ${showWeight(Math.abs(ch), false)} since start` : "");
   }
 }
 
@@ -1767,8 +1778,217 @@ el.fastCancel.addEventListener("click", () => {
 // Keep the timer moving while a fast is running
 setInterval(() => { if (profile?.fast && !el.panel.hidden) renderFasting(); }, 30000);
 
+// ---------- Weight (optional, private) ----------
+// profile.body { units: "lb" | "kg", heightCm, goalKg, startKg, startDate }
+// profile.weights [{ date, kg }], one weigh-in per day. Stored in kg; shown in the person's units.
+const LB = 2.20462;
+const weightUnits = () => profile?.body?.units || (shopRegion() === "US" ? "lb" : "kg");
+const toUnit = (kg) => (weightUnits() === "lb" ? kg * LB : kg);
+const fromUnit = (v) => (weightUnits() === "lb" ? v / LB : v);
+const showWeight = (kg, unit = true) => `${(Math.round(toUnit(kg) * 10) / 10).toLocaleString()}${unit ? " " + weightUnits() : ""}`;
+const sortedWeights = () => [...(profile?.weights || [])].sort((a, b) => a.date.localeCompare(b.date));
+const latestWeight = () => sortedWeights().slice(-1)[0] || null;
+const weightChange = () => {
+  const last = latestWeight();
+  return last && profile?.body?.startKg ? last.kg - profile.body.startKg : 0;
+};
+const weighInDue = () => {
+  const last = latestWeight();
+  return !!profile?.body && (!last || diffDays(last.date, todayISO()) >= 7);
+};
+let weightEditing = false;
+
+function fillWeightSetup() {
+  const b = profile?.body;
+  const units = weightUnits();
+  el.wUnits.value = units;
+  const cm = b?.heightCm || null;
+  if (cm) {
+    const inches = cm / 2.54;
+    el.wFt.value = Math.floor(inches / 12);
+    el.wIn.value = Math.round((inches % 12) * 2) / 2;
+    el.wCm.value = Math.round(cm);
+  }
+  const last = latestWeight();
+  if (last) el.wNow.value = Math.round(toUnit(last.kg) * 10) / 10;
+  if (b?.goalKg) el.wGoal.value = Math.round(toUnit(b.goalKg) * 10) / 10;
+  showUnitFields();
+}
+
+function showUnitFields() {
+  const lb = el.wUnits.value === "lb";
+  el.wHeightImperial.hidden = !lb;
+  el.wHeightMetric.hidden = lb;
+  el.wNowLabel.textContent = `Current weight (${lb ? "lb" : "kg"})`;
+  el.wGoalLabel.textContent = `Goal weight (${lb ? "lb" : "kg"})`;
+}
+
+function renderWeight() {
+  if (viewing) return;
+  const b = profile?.body;
+  const setup = !b || weightEditing;
+  el.wSetup.hidden = !setup;
+  el.wProgress.hidden = setup;
+  el.wSetupCancel.hidden = !b;
+  el.wTotal.textContent = b && latestWeight() ? showWeight(latestWeight().kg) : "";
+  if (setup || !b) return;
+
+  const list = sortedWeights();
+  const last = list.slice(-1)[0];
+  const change = weightChange();
+  el.wStatNow.textContent = last ? showWeight(last.kg) : "—";
+  el.wStatChange.textContent = change ? `${change < 0 ? "−" : "+"}${showWeight(Math.abs(change))}` : "0";
+  const left = last ? b.goalKg - last.kg : 0;
+  el.wStatLeft.textContent = last ? (Math.abs(left) < 0.05 ? "Reached! 🎉" : showWeight(Math.abs(left))) : "—";
+  const total = b.goalKg - b.startKg;
+  const pct = total ? Math.max(0, Math.min(100, ((last.kg - b.startKg) / total) * 100)) : 100;
+  el.wGoalBar.style.width = pct + "%";
+  el.wGoalText.textContent = pct >= 100 ? "You reached your goal. Amazing work! 🎉"
+    : `${Math.round(pct)}% of the way to ${showWeight(b.goalKg)}. A healthy pace is about ${weightUnits() === "lb" ? "1–2 lb" : "0.5–1 kg"} a week.`;
+  el.weighValue.placeholder = `Today's weight (${weightUnits()})`;
+  const due = weighInDue();
+  el.weighMsg.textContent = due ? "It's time for your weekly weigh-in. Weigh yourself in the morning, before breakfast." : `Next weigh-in: ${shortDate(shiftDate(last.date, 7))}.`;
+
+  // Recent weigh-ins (newest first)
+  el.weighList.replaceChildren();
+  for (const w of [...list].reverse().slice(0, 6)) {
+    const li = document.createElement("li");
+    li.className = "food-row";
+    const item = document.createElement("span"); item.className = "food-row__item"; item.textContent = shortDate(w.date);
+    const meta = document.createElement("span"); meta.className = "food-row__meta"; meta.textContent = showWeight(w.kg);
+    const del = document.createElement("button");
+    del.type = "button"; del.className = "food-row__delete"; del.textContent = "✕";
+    del.setAttribute("aria-label", `Remove weigh-in from ${shortDate(w.date)}`);
+    del.disabled = !!blocked;
+    del.addEventListener("click", () => saveWeights(sortedWeights().filter((x) => x.date !== w.date)));
+    li.append(item, meta, del);
+    el.weighList.append(li);
+  }
+  drawWeightChart(list, b);
+}
+
+// A simple line chart: one series (your weight), a goal reference line, the latest value labelled.
+// Tap a point to read its value.
+function drawWeightChart(list, b) {
+  const svg = el.wChart;
+  const W = 320, H = 170, L = 40, R = 52, T = 14, B = 26;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.replaceChildren();
+  const ns = "http://www.w3.org/2000/svg";
+  const mk = (tag, attrs, text) => {
+    const n = document.createElementNS(ns, tag);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+    if (text != null) n.textContent = text;
+    svg.append(n);
+    return n;
+  };
+  if (list.length < 2) {
+    el.wChartTitle.textContent = "Your progress chart appears after your second weigh-in.";
+    svg.hidden = true;
+    return;
+  }
+  svg.hidden = false;
+  const vals = list.map((w) => toUnit(w.kg));
+  const goal = toUnit(b.goalKg);
+  let lo = Math.min(...vals, goal), hi = Math.max(...vals, goal);
+  const pad = Math.max(1, (hi - lo) * 0.12);
+  lo = Math.floor(lo - pad); hi = Math.ceil(hi + pad);
+  const t0 = fromISO(list[0].date).getTime(), t1 = fromISO(list[list.length - 1].date).getTime();
+  const x = (d) => L + ((fromISO(d).getTime() - t0) / Math.max(1, t1 - t0)) * (W - L - R);
+  const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  // Gridlines and y ticks (3 clean values)
+  const step = Math.max(1, Math.round((hi - lo) / 3));
+  for (let v = lo; v <= hi; v += step) {
+    mk("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), class: "wc-grid" });
+    mk("text", { x: L - 6, y: y(v) + 4, class: "wc-tick", "text-anchor": "end" }, String(v));
+  }
+  // x labels: first and last date
+  mk("text", { x: L, y: H - 6, class: "wc-tick", "text-anchor": "start" }, shortDate(list[0].date));
+  mk("text", { x: W - R, y: H - 6, class: "wc-tick", "text-anchor": "end" }, shortDate(list[list.length - 1].date));
+  // Goal reference line, labelled
+  mk("line", { x1: L, x2: W - R, y1: y(goal), y2: y(goal), class: "wc-goal" });
+  mk("text", { x: W - R + 6, y: y(goal) + 4, class: "wc-label" }, `Goal ${Math.round(goal)}`);
+  // Area wash + line + points
+  const pts = list.map((w, i) => [x(w.date), y(vals[i])]);
+  mk("path", { d: `M${pts[0][0]},${H - B} ` + pts.map((p) => `L${p[0]},${p[1]}`).join(" ") + ` L${pts[pts.length - 1][0]},${H - B} Z`, class: "wc-area" });
+  mk("polyline", { points: pts.map((p) => p.join(",")).join(" "), class: "wc-line" });
+  list.forEach((w, i) => {
+    const [px, py] = pts[i];
+    const dot = mk("circle", { cx: px, cy: py, r: 4, class: "wc-dot" });
+    const hit = mk("circle", { cx: px, cy: py, r: 14, class: "wc-hit", tabindex: "0", role: "button", "aria-label": `${shortDate(w.date)}: ${showWeight(w.kg)}` });
+    const show = () => { el.wChartTitle.textContent = `${shortDate(w.date)}: ${showWeight(w.kg)}`; svg.querySelectorAll(".wc-dot").forEach((d) => d.classList.remove("is-on")); dot.classList.add("is-on"); };
+    hit.addEventListener("click", show);
+    hit.addEventListener("focus", show);
+  });
+  // Latest value at the line end
+  const [lx, ly] = pts[pts.length - 1];
+  mk("text", { x: lx + 8, y: ly - 8, class: "wc-label wc-label--strong" }, (Math.round(vals[vals.length - 1] * 10) / 10).toString());
+  el.wChartTitle.textContent = `Your weight (${weightUnits()}) by weigh-in. Tap a point to see it.`;
+}
+
+async function saveWeights(weights, body) {
+  profile = { ...(profile || {}), weights, ...(body ? { body } : {}) };
+  render();
+  try { await store.saveProfile({ weights, ...(body ? { body } : {}) }); } catch (err) { handleWriteError(err); }
+}
+
+el.wUnits.addEventListener("change", showUnitFields);
+el.wEdit.addEventListener("click", () => { weightEditing = true; fillWeightSetup(); render(); });
+el.wSetupCancel.addEventListener("click", () => { weightEditing = false; el.wSetupMsg.textContent = ""; render(); });
+el.wSetup.addEventListener("submit", (e) => {
+  e.preventDefault();
+  if (blocked || !store) return;
+  const units = el.wUnits.value;
+  const conv = (v) => (units === "lb" ? v / LB : v);
+  const heightCm = units === "lb"
+    ? ((Number(el.wFt.value) || 0) * 12 + (Number(el.wIn.value) || 0)) * 2.54
+    : Number(el.wCm.value) || 0;
+  const now = conv(Number(el.wNow.value));
+  const goal = conv(Number(el.wGoal.value));
+  if (!(heightCm >= 90 && heightCm <= 250)) { el.wSetupMsg.textContent = "Please enter your height."; return; }
+  if (!(now >= 25 && now <= 350)) { el.wSetupMsg.textContent = "Please enter your current weight."; return; }
+  if (!(goal >= 25 && goal <= 350)) { el.wSetupMsg.textContent = "Please enter your goal weight."; return; }
+  // A gentle check: goals below a healthy weight for your height
+  const bmi = goal / Math.pow(heightCm / 100, 2);
+  if (bmi < 18.5 && el.wSetupMsg.dataset.warned !== "1") {
+    el.wSetupMsg.dataset.warned = "1";
+    el.wSetupMsg.textContent = "That goal is below the healthy weight range for your height. Please check with a doctor. Tap Save again to keep it.";
+    return;
+  }
+  el.wSetupMsg.textContent = "";
+  el.wSetupMsg.dataset.warned = "";
+  const old = profile?.body;
+  const today = todayISO();
+  const keepStart = old && weightEditing;
+  const body = {
+    units, heightCm: Math.round(heightCm * 10) / 10, goalKg: Math.round(goal * 100) / 100,
+    startKg: keepStart ? old.startKg : Math.round(now * 100) / 100, startDate: keepStart ? old.startDate : today,
+  };
+  const weights = sortedWeights().filter((w) => w.date !== today);
+  weights.push({ date: today, kg: Math.round(now * 100) / 100 });
+  weightEditing = false;
+  saveWeights(weights, body);
+  showToast("Weight tracking is set up. Weigh in once a week to see your progress!", "info");
+});
+el.weighIn.addEventListener("submit", (e) => {
+  e.preventDefault();
+  if (blocked || !store || !profile?.body) return;
+  const v = Number(el.weighValue.value);
+  const kg = fromUnit(v);
+  if (!(kg >= 25 && kg <= 350)) { el.weighMsg.textContent = "Please enter your weight."; return; }
+  const today = todayISO();
+  const before = latestWeight();
+  const weights = sortedWeights().filter((w) => w.date !== today);
+  weights.push({ date: today, kg: Math.round(kg * 100) / 100 });
+  el.weighValue.value = "";
+  saveWeights(weights);
+  const b = profile.body;
+  const towardGoal = before && Math.sign(b.goalKg - b.startKg) === Math.sign(kg - before.kg) && kg !== before.kg;
+  showToast(towardGoal ? `Weigh-in saved: ${showWeight(Math.abs(kg - before.kg))} closer to your goal!` : "Weigh-in saved. Consistency beats perfection, keep going!", towardGoal ? "goal" : "info");
+});
+
 // ---------- The + button: quick actions, then one part of the log ----------
-const SECTION_TITLES = { steps: "Steps", water: "Water", sleep: "Sleep", workout: "Workouts", food: "Food", fast: "Fasting", goals: "Your goals" };
+const SECTION_TITLES = { steps: "Steps", water: "Water", sleep: "Sleep", workout: "Workouts", food: "Food", fast: "Fasting", weight: "Weight", goals: "Your goals" };
 
 function openQuick() {
   if (viewing || !store) return;
@@ -1790,12 +2010,14 @@ function openLog(section = null) {
 }
 
 function closeAll() {
-  if (!logSheet && !quickSheet) return;
+  if (!logSheet && !quickSheet && !boardOpen) return;
+  const fromBoard = boardOpen;
+  boardOpen = false;
   logSheet = false;
   quickSheet = false;
   logSection = null;
   render();
-  el.fab.focus({ preventScroll: true });
+  (fromBoard ? el.boardBtn : el.fab).focus({ preventScroll: true });
 }
 
 // The small values under each quick action
@@ -1815,6 +2037,7 @@ function renderQuick() {
     food: log.foods.length ? `${log.foods.length} item${log.foods.length === 1 ? "" : "s"}` : "Add",
     fast: running ? formatHours(Math.max(0, (Date.now() - running.start) / 3600000)) : log.fasts.length ? `${formatHours(fastHours(log))} done` : "Start",
     cycle: c?.last ? `Day ${diffDays(c.last, date) + 1}` : "Log",
+    weight: !profile?.body ? "Set up" : weighInDue() ? "Weigh-in due" : latestWeight() ? showWeight(latestWeight().kg) : "Add",
     goals: "Edit",
   };
   for (const v of el.quick.querySelectorAll("[data-value]")) v.textContent = values[v.dataset.value] || "";
@@ -2968,7 +3191,7 @@ function renderChallenges() {
       const all = document.createElement("a");
       all.href = "#challenges";
       all.textContent = "Shop ›";
-      links.append(boardLink(active[0], "🏆 Leaderboard", ""), all);
+      links.append(all);
       head.append(t, links);
       el.challengeCard.append(head);
       for (const c of active) {
@@ -3078,7 +3301,6 @@ function renderChallenges() {
     const fill = document.createElement("span"); fill.style.width = Math.min(100, (st.count / st.target) * 100) + "%";
     meter.append(fill);
     const actions = document.createElement("div"); actions.className = "row";
-    if (st.joined) actions.append(boardLink(c));
     if (st.joined && !st.ended && !blocked) actions.append(inviteButton(c));
     if (free && !st.joined && !st.ended) {
       const b = document.createElement("button"); b.type = "button"; b.className = "btn btn--small"; b.textContent = "Join";
@@ -3106,93 +3328,116 @@ function renderChallenges() {
   }
 }
 
-// ---------- Challenge leaderboard page ----------
+// ---------- Challenge leaderboard (trophy in the header) ----------
+// Everyone taking part in a challenge, ranked by points, as a bar chart with your bar highlighted.
+let boardOpen = false;
+let boardId = null;        // challenge being shown
 let boardUnwatch = null;
 let boardWatching = null;
 let boardRows = null;
 
-const boardLink = (c, text = "🏆 Leaderboard", cls = "btn btn--ghost btn--small") => {
-  const a = document.createElement("a");
-  a.href = "#board/" + encodeURIComponent(c.id);
-  a.className = cls;
-  a.textContent = text;
-  return a;
-};
+const boardChallenges = () => CHALLENGES.filter((c) => {
+  const st = challengeStatus(c);
+  return st.joined && !(st.ended && c.type !== "window");
+});
+
+function watchBoardFor(id) {
+  if (boardWatching === id || !store?.watchBoard) return;
+  if (boardUnwatch) boardUnwatch();
+  boardRows = null;
+  boardWatching = id;
+  boardUnwatch = store.watchBoard(id, (rows) => { boardRows = rows; render(); }, () => { boardRows = []; render(); });
+}
+
+const rankedBoard = () => [...(boardRows || [])].sort((a, b) => (b.points || 0) - (a.points || 0) || (b.count || 0) - (a.count || 0));
 
 function renderBoard() {
-  if (el.boardPanel.hidden) {
-    if (boardUnwatch) { boardUnwatch(); boardUnwatch = null; boardWatching = null; }
-    return;
-  }
-  const mine = CHALLENGES.filter((c) => challengeStatus(c).joined);
-  const c = CHALLENGES.find((x) => x.id === boardId) || mine[0] || CHALLENGES[0];
-  boardId = c.id;
-  if (boardWatching !== c.id && store?.watchBoard) {
-    if (boardUnwatch) boardUnwatch();
-    boardRows = null;
-    boardWatching = c.id;
-    boardUnwatch = store.watchBoard(c.id, (rows) => { boardRows = rows; render(); }, () => { boardRows = []; render(); });
-  }
-  const st = challengeStatus(c);
-  el.boardEmoji.textContent = c.emoji;
-  el.boardTitle.textContent = c.name;
-  el.boardSub.textContent = `${challengeDates(c)} · ${SHOP.prize}`;
+  const inApp = !signedOut && !!store && !viewing;
+  const mine = inApp && !locked() ? boardChallenges() : [];
+  el.boardBtn.hidden = !mine.length;
+  if (!mine.length) { boardOpen = false; }
+  const c = mine.find((x) => x.id === boardId) || mine[0];
+  if (c) { boardId = c.id; watchBoardFor(c.id); }
+  else if (boardUnwatch) { boardUnwatch(); boardUnwatch = null; boardWatching = null; boardRows = null; }
 
-  // Switch between your challenges
+  const rows = rankedBoard();
+  const myIndex = rows.findIndex((r) => r.id === store?.uid);
+  // Your rank on the trophy
+  el.boardRank.hidden = myIndex < 0;
+  el.boardRank.textContent = myIndex >= 0 ? `#${myIndex + 1}` : "";
+  el.boardBtn.setAttribute("aria-label", myIndex >= 0 ? `Leaderboard: you're number ${myIndex + 1} of ${rows.length}` : "Leaderboard");
+
+  el.boardSheet.hidden = !boardOpen || !c;
+  if (el.boardSheet.hidden) return;
+
+  el.boardEmoji.textContent = c.emoji;
+  el.boardName.textContent = c.name;
+  el.boardSub.textContent = `${challengeDates(c)} · ${SHOP.prize}.`;
   el.boardTabs.hidden = mine.length < 2;
   el.boardTabs.replaceChildren();
   for (const m of mine) {
-    const a = document.createElement("a");
-    a.className = "chip";
-    a.href = "#board/" + encodeURIComponent(m.id);
-    a.textContent = `${m.emoji} ${m.name}`;
-    a.setAttribute("aria-pressed", String(m.id === c.id));
-    el.boardTabs.append(a);
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip";
+    b.textContent = `${m.emoji} ${m.name}`;
+    b.setAttribute("aria-pressed", String(m.id === c.id));
+    b.addEventListener("click", () => { boardId = m.id; render(); });
+    el.boardTabs.append(b);
   }
-
-  const rows = [...(boardRows || [])].sort((a, b) => (b.points || 0) - (a.points || 0) || (b.count || 0) - (a.count || 0));
-  const myIndex = rows.findIndex((r) => r.id === store?.uid);
 
   // Where you stand
   el.boardMe.hidden = boardRows === null;
-  if (profile?.boardHidden) el.boardMe.textContent = "You're hidden from leaderboards. Turn on \"Show me\" below to compete.";
-  else if (!st.joined) el.boardMe.textContent = "You're not in this challenge yet. Join it in the Shop to get on the board.";
-  else if (myIndex < 0) el.boardMe.textContent = "Your points appear here after your next log. Let's go!";
+  el.boardMeRank.textContent = myIndex >= 0 ? `#${myIndex + 1}` : "–";
+  el.boardMeOf.textContent = myIndex >= 0 ? `of ${rows.length}` : "";
+  if (profile?.boardHidden) el.boardMeText.textContent = "You're hidden from leaderboards. Turn on \"Show me\" below to compete.";
+  else if (myIndex < 0) el.boardMeText.textContent = "Your points appear here after your next log. Let's go!";
+  else if (myIndex === 0) el.boardMeText.textContent = `${fmt(rows[0].points || 0)} points. You're in the lead! 👑`;
   else {
-    const me = rows[myIndex];
-    const ahead = myIndex > 0 ? rows[myIndex - 1] : null;
-    el.boardMe.textContent = myIndex === 0
-      ? `You're #1 of ${rows.length} with ${fmt(me.points || 0)} points! 👑 Keep it up.`
-      : `You're #${myIndex + 1} of ${rows.length} with ${fmt(me.points || 0)} points. ${fmt((ahead.points || 0) - (me.points || 0) + 1)} more to pass ${ahead.name || "the next person"}!`;
+    const me = rows[myIndex], ahead = rows[myIndex - 1];
+    el.boardMeText.textContent = `${fmt(me.points || 0)} points · ${fmt((ahead.points || 0) - (me.points || 0) + 1)} more to pass ${ahead.name || "the next person"}`;
   }
 
-  // Top 3 and everyone else
+  // Bar chart: the top 7, then you with your neighbours if you're further down
+  let show = rows.map((r, i) => ({ r, i }));
+  if (rows.length > 10) {
+    const top = show.slice(0, 7);
+    show = myIndex >= 7 ? [...top, null, ...show.slice(Math.max(7, myIndex - 1), myIndex + 2)] : show.slice(0, 10);
+  }
+  const max = Math.max(1, ...rows.map((r) => r.points || 0));
   const medal = ["🥇", "🥈", "🥉"];
-  el.boardPodium.replaceChildren();
-  el.boardList.replaceChildren();
-  rows.slice(0, 100).forEach((r, i) => {
+  el.boardChart.replaceChildren();
+  for (const item of show) {
     const li = document.createElement("li");
+    if (!item) { li.className = "board-gap"; li.textContent = "⋯"; li.setAttribute("aria-hidden", "true"); el.boardChart.append(li); continue; }
+    const { r, i } = item;
     const isMe = r.id === store?.uid;
-    li.className = (i < 3 ? "podium__place podium__place--" + (i + 1) : "board-row") + (isMe ? " is-me" : "");
+    li.className = "board-bar" + (isMe ? " is-me" : "");
+    li.title = `${r.name || "Someone"}: ${fmt(r.points || 0)} points, ${r.count || 0} of ${r.target || 0} days`;
     const rank = document.createElement("span");
-    rank.className = "board__rank";
+    rank.className = "board-bar__rank";
     rank.textContent = i < 3 ? medal[i] : String(i + 1);
     const name = document.createElement("span");
-    name.className = "board__name";
+    name.className = "board-bar__name";
     name.textContent = (r.name || "Someone") + (isMe ? " (you)" : "");
-    const pts = document.createElement("span");
-    pts.className = "board__points";
-    pts.textContent = `${fmt(r.points || 0)} pts`;
-    const days = document.createElement("small");
-    days.className = "board__days";
-    days.textContent = r.done ? "Completed 🎉" : `${r.count || 0}/${r.target || 0} days`;
-    li.append(rank, name, pts, days);
-    (i < 3 ? el.boardPodium : el.boardList).append(li);
-  });
+    const track = document.createElement("span");
+    track.className = "board-bar__track";
+    const fill = document.createElement("span");
+    fill.className = "board-bar__fill";
+    fill.style.width = Math.max(2, ((r.points || 0) / max) * 100) + "%";
+    track.append(fill);
+    const val = document.createElement("span");
+    val.className = "board-bar__value";
+    val.textContent = fmt(r.points || 0);
+    li.append(rank, name, track, val);
+    el.boardChart.append(li);
+  }
   el.boardEmpty.hidden = boardRows === null || rows.length > 0;
   el.boardShow.checked = !profile?.boardHidden;
   el.boardShow.disabled = !!blocked;
 }
+
+el.boardBtn.addEventListener("click", () => { boardOpen = true; quickSheet = false; logSheet = false; render(); el.boardClose.focus({ preventScroll: true }); });
+el.boardClose.addEventListener("click", () => { boardOpen = false; render(); el.boardBtn.focus({ preventScroll: true }); });
 
 el.boardShow.addEventListener("change", async () => {
   const hidden = !el.boardShow.checked;

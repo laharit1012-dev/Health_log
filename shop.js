@@ -21,6 +21,7 @@ export const SHOP = {
         "fast-if16": { price: "9.99", payLink: "" },
         "fast-omad": { price: "12.99", payLink: "" },
         "fast-36": { price: "12.99", payLink: "" },
+        "weightloss-8w": { price: "19.99", payLink: "" },
       },
     },
     IN: {
@@ -34,6 +35,7 @@ export const SHOP = {
         "fast-if16": { price: "199", payLink: "" },
         "fast-omad": { price: "249", payLink: "" },
         "fast-36": { price: "249", payLink: "" },
+        "weightloss-8w": { price: "399", payLink: "" },
       },
     },
   },

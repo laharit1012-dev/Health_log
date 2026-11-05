@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=46">
+  <link rel="stylesheet" href="styles.css?v=47">
 </head>
 <body>
   <!-- Background wallpaper: full on Today, dimmed on the other pages -->
@@ -48,6 +48,10 @@
   <header class="site-header">
     <div class="site-header__inner">
       <span class="brand">Health Log</span>
+      <button id="board-btn" class="board-btn" type="button" hidden aria-label="Leaderboard: see your position">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4.5a2.5 2.5 0 0 0 3 4M17 6h2.5a2.5 2.5 0 0 1-3 4"/></svg>
+        <span id="board-rank" class="board-btn__rank" hidden></span>
+      </button>
       <a id="who" class="who" href="#account" hidden aria-label="Account">
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="3.5"/><path d="M4.5 20c.8-3.6 3.8-6 7.5-6s6.7 2.4 7.5 6"/></svg>
         <span id="who-name" class="who__name"></span>
@@ -375,6 +379,58 @@
         <p class="hint">A fast of 16+ hours gives you your full food points that day. Fasting isn't right for everyone: skip it if you're pregnant, breastfeeding, under 18, have diabetes or a history of eating disorders, and check with a doctor first.</p>
       </div>
 
+      <!-- Weight: optional and private -->
+      <div class="food weight" data-section="weight">
+        <div class="section-head">
+          <h3>Weight</h3>
+          <span id="weight-total" class="hint"></span>
+        </div>
+        <form id="weight-setup" class="weight-setup" novalidate hidden>
+          <p class="hint">Optional and private: only you can see your weight. Weigh in once a week to see your progress.</p>
+          <label class="field">
+            <span>Units</span>
+            <select id="w-units">
+              <option value="lb">Pounds and feet (lb, ft)</option>
+              <option value="kg">Kilograms and centimetres (kg, cm)</option>
+            </select>
+          </label>
+          <div id="w-height-imperial" class="pair">
+            <label class="field"><span>Height (feet)</span><input id="w-ft" type="number" inputmode="numeric" min="3" max="8"></label>
+            <label class="field"><span>Inches</span><input id="w-in" type="number" inputmode="decimal" min="0" max="11.9" step="0.5"></label>
+          </div>
+          <label id="w-height-metric" class="field" hidden><span>Height (cm)</span><input id="w-cm" type="number" inputmode="decimal" min="90" max="250"></label>
+          <div class="pair">
+            <label class="field"><span id="w-now-label">Current weight (lb)</span><input id="w-now" type="number" inputmode="decimal" step="0.1"></label>
+            <label class="field"><span id="w-goal-label">Goal weight (lb)</span><input id="w-goal" type="number" inputmode="decimal" step="0.1"></label>
+          </div>
+          <p id="w-setup-msg" class="auth-msg" aria-live="polite"></p>
+          <div class="row">
+            <button class="btn" type="submit">Save</button>
+            <button id="w-setup-cancel" class="btn btn--ghost" type="button" hidden>Cancel</button>
+          </div>
+        </form>
+        <div id="weight-progress" class="weight-progress" hidden>
+          <div class="weight-stats">
+            <div><small>Now</small><strong id="w-stat-now"></strong></div>
+            <div><small>Since start</small><strong id="w-stat-change"></strong></div>
+            <div><small>To goal</small><strong id="w-stat-left"></strong></div>
+          </div>
+          <div class="meter" aria-hidden="true"><span id="w-goal-bar"></span></div>
+          <p id="w-goal-text" class="hint"></p>
+          <figure class="weight-chart">
+            <svg id="weight-chart" role="img" aria-labelledby="weight-chart-title"></svg>
+            <figcaption id="weight-chart-title" class="hint"></figcaption>
+          </figure>
+          <form id="weigh-in" class="food-form weigh-in" novalidate>
+            <input id="weigh-value" type="number" inputmode="decimal" step="0.1" placeholder="Today's weight" aria-label="Today's weight">
+            <button class="btn" type="submit">Save weigh-in</button>
+          </form>
+          <p id="weigh-msg" class="hint" aria-live="polite"></p>
+          <ul id="weigh-list" class="fast-list"></ul>
+          <button id="weight-edit" class="btn btn--ghost btn--small btn--fit" type="button">Edit height and goal</button>
+        </div>
+      </div>
+
       <div id="goals-box" class="goals-box" data-section="goals">
       <div class="goals-row">
         <p id="goals-text" class="hint"></p>
@@ -429,27 +485,6 @@
       </div>
       <div id="challenge-list" class="challenge-list"></div>
       <p class="hint">After paying, your access starts within a few hours. Days count automatically from your log. See the <a href="prize-rules.html">prize rules</a> and <a href="refunds.html">refund policy</a>.</p>
-    </section>
-
-    <!-- Challenge leaderboard: everyone taking part, most points first -->
-    <section id="board-panel" class="stack board" aria-labelledby="board-title" hidden>
-      <a href="#challenges" class="back-link">‹ Shop</a>
-      <div class="board-head">
-        <span id="board-emoji" class="challenge__emoji" aria-hidden="true"></span>
-        <div>
-          <h2 id="board-title">Leaderboard</h2>
-          <p id="board-sub" class="hint"></p>
-        </div>
-      </div>
-      <div id="board-tabs" class="chips" hidden></div>
-      <div id="board-me" class="board-me" hidden></div>
-      <ol id="board-podium" class="podium"></ol>
-      <ol id="board-list" class="board-list"></ol>
-      <p id="board-empty" class="hint" hidden>No points yet. Log today and be the first on the board!</p>
-      <label class="switch-row board-optin">
-        <span><strong>Show me on leaderboards</strong><br><small class="hint">Others taking part see your name and challenge points, never your logs.</small></span>
-        <input id="board-show" class="switch" type="checkbox" role="switch">
-      </label>
     </section>
 
     <!-- Admin: give people access (only visible to admins) -->
@@ -746,6 +781,27 @@
 
   <!-- Pages: Today, Family, Reminders, Account -->
   <div id="sheet-backdrop" class="sheet-backdrop" hidden></div>
+  <!-- Leaderboard: opens from the trophy in the header -->
+  <section id="board-sheet" class="quick-sheet board" role="dialog" aria-labelledby="board-title" hidden>
+    <div class="quick-sheet__grab" aria-hidden="true"></div>
+    <div class="quick-sheet__head">
+      <h2 id="board-title"><span id="board-emoji" aria-hidden="true"></span> <span id="board-name">Leaderboard</span></h2>
+      <button id="board-close" class="btn btn--ghost btn--small" type="button">Close</button>
+    </div>
+    <div id="board-tabs" class="chips" hidden></div>
+    <div id="board-me" class="board-me" hidden>
+      <span class="board-me__rank"><strong id="board-me-rank"></strong><small id="board-me-of"></small></span>
+      <span id="board-me-text" class="board-me__text"></span>
+    </div>
+    <ol id="board-chart" class="board-chart" aria-label="Points of everyone in this challenge"></ol>
+    <p id="board-empty" class="hint" hidden>No points yet. Log today and be the first on the board!</p>
+    <p id="board-sub" class="hint"></p>
+    <label class="switch-row board-optin">
+      <span><strong>Show me on leaderboards</strong><br><small class="hint">Others taking part see your name and challenge points, never your logs.</small></span>
+      <input id="board-show" class="switch" type="checkbox" role="switch">
+    </label>
+  </section>
+
   <!-- Quick actions: opens from the + button on Today -->
   <section id="quick-sheet" class="quick-sheet" role="dialog" aria-labelledby="quick-title" hidden>
     <div class="quick-sheet__grab" aria-hidden="true"></div>
@@ -789,6 +845,11 @@
         <span class="quick__label">Period</span>
         <small class="quick__value" data-value="cycle"></small>
       </button>
+      <button type="button" class="quick" data-open="weight">
+        <span class="quick__icon"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M8 9.5a5 5 0 0 1 8 0M12 9.5l1.5-2"/></svg></span>
+        <span class="quick__label">Weight</span>
+        <small class="quick__value" data-value="weight"></small>
+      </button>
       <button type="button" class="quick" data-open="goals">
         <span class="quick__icon"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="0.8" fill="currentColor"/></svg></span>
         <span class="quick__label">Goals</span>
@@ -825,13 +886,13 @@
   </nav>
 
   <footer class="site-footer">
-    <p>Health Log · version <span id="app-version">46</span> · <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a href="refunds.html">Refunds</a> · <a href="prize-rules.html">Prize rules</a></p>
+    <p>Health Log · version <span id="app-version">47</span> · <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a href="refunds.html">Refunds</a> · <a href="prize-rules.html">Prize rules</a></p>
   </footer>
 
   <!-- Goal celebrations -->
   <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <script type="module" src="app.js?v=46"></script>
+  <script type="module" src="app.js?v=47"></script>
 </body>
 </html>
