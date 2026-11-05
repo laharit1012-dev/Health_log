@@ -15,8 +15,8 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=28";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=28";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=29";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=29";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -1769,21 +1769,31 @@ function levelInfo(xpDays = profile?.xpDays || {}) {
 
 // Today's title from today's points
 function dailyTitle(points) {
-  if (points >= 130) return "Superstar";
-  if (points >= 90) return "Achiever";
+  if (points >= 100) return "Superstar";
+  if (points >= 75) return "Achiever";
   if (points >= 50) return "Go-getter";
   if (points > 0) return "Warming up";
   return "Not started";
 }
 
-// Points for one day: +10 for logging anything, +20 per goal reached, +10 for food, +30 for a perfect day
+// Points for one day: up to 100, split evenly across four logs (25 each).
+// Steps, water and workout earn their share of your goal; food earns 25 for
+// three meals logged (breakfast, lunch, dinner or snack).
+const POINTS_EACH = 25;
+const part = (v, goal) => (goal > 0 ? Math.min(1, (Number(v) || 0) / goal) : 0);
+function pointsFrom({ steps, stepsGoal, water, waterGoal, workout, workoutGoal, meals }) {
+  return Math.round(POINTS_EACH * (part(steps, stepsGoal) + part(water, waterGoal) + part(workout, workoutGoal) + Math.min(1, (meals || 0) / 3)));
+}
+const mealsLogged = (foods) => new Set(foods.map((f) => f.meal || "Snack")).size;
+
 function dayXP(log, g) {
   const n = normalize(log, log?.date);
-  const any = n.steps || n.water || n.foods.length || n.workouts.length || n.sleep.bed || n.sleep.wake;
-  if (!any) return 0;
-  const m = metFlags(n, g);
-  const goalsHit = [m.steps, m.water, m.sleep, m.workout].filter(Boolean).length;
-  return 10 + 20 * goalsHit + (n.foods.length ? 10 : 0) + (goalsHit === 4 ? 30 : 0);
+  return pointsFrom({
+    steps: n.steps, stepsGoal: g.steps,
+    water: n.water, waterGoal: g.water,
+    workout: workoutMinutes(n), workoutGoal: g.workout,
+    meals: mealsLogged(n.foods),
+  });
 }
 
 const totalXP = () => Object.values(profile?.xpDays || {}).reduce((a, b) => a + (Number(b) || 0), 0);
@@ -1791,7 +1801,7 @@ const totalXP = () => Object.values(profile?.xpDays || {}).reduce((a, b) => a + 
 const BADGES = [
   { id: "first", glyph: "1st", name: "First step", how: "Log anything" },
   { id: "tenk", glyph: "10K", name: "10K club", how: "10,000 steps in a day" },
-  { id: "perfect", glyph: "★", name: "Perfect day", how: "All 4 goals in one day" },
+  { id: "perfect", glyph: "★", name: "Perfect day", how: "100 points in one day" },
   { id: "streak3", glyph: "3d", name: "On a roll", how: "3-day step streak" },
   { id: "streak7", glyph: "7d", name: "Week warrior", how: "7-day step streak" },
   { id: "streak30", glyph: "30d", name: "Unstoppable", how: "30-day step streak" },
@@ -1837,9 +1847,9 @@ function earnedNow() {
   };
   const stepRun = longestRun((d) => met(d).steps);
   const out = new Set();
-  if (days.some((d) => dayXP(d, g) > 0)) out.add("first");
+  if (days.some((d) => d.steps || d.water || d.foods.length || d.workouts.length || d.sleep.bed || d.sleep.wake)) out.add("first");
   if (days.some((d) => (d.steps || 0) >= 10000)) out.add("tenk");
-  if (days.some((d) => Object.values(met(d)).every(Boolean))) out.add("perfect");
+  if (days.some((d) => dayXP(d, g) >= 100)) out.add("perfect");
   if (stepRun >= 3) out.add("streak3");
   if (stepRun >= 7) out.add("streak7");
   if (stepRun >= 30) out.add("streak30");
@@ -1964,17 +1974,19 @@ function daySummary(log, g) {
     wo: workoutMinutes(n), wog: g.workout,
     sl: sleepHours(n.sleep.bed, n.sleep.wake), slg: g.sleep,
     fd: n.foods.length, kc: caloriesOf(n),
-    wa: n.water, wag: g.water,
+    wa: n.water, wag: g.water, ml: mealsLogged(n.foods),
   };
 }
 
 // A member's points for a day, from their shared summary (same rules as your own points)
 function summaryPoints(sm) {
   if (!sm) return 0;
-  const any = sm.st || sm.wo || sm.sl != null || sm.fd || sm.wa;
-  if (!any) return 0;
-  const hits = [sm.st >= sm.stg, sm.wag ? (sm.wa || 0) >= sm.wag : false, sm.sl != null && sm.sl >= sm.slg, sm.wo >= sm.wog].filter(Boolean).length;
-  return 10 + 20 * hits + (sm.fd ? 10 : 0) + (hits === 4 ? 30 : 0);
+  return pointsFrom({
+    steps: sm.st, stepsGoal: sm.stg,
+    water: sm.wa, waterGoal: sm.wag,
+    workout: sm.wo, workoutGoal: sm.wog,
+    meals: sm.ml ?? Math.min(3, sm.fd || 0),
+  });
 }
 
 function memberData() {
