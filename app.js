@@ -15,9 +15,9 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=32";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=32";
-import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS } from "./workouts.js?v=32";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=33";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=33";
+import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=33";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -155,7 +155,7 @@ function firestoreStore(db, uid) {
     kind: "account",
     canLink: true,
     watchProfile: (cb, onError) => watch(userRef, (d, m) => cb(d
-      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null, groups: Array.isArray(d.groups) ? d.groups : [], xpDays: d.xpDays || {}, badges: d.badges || {}, plan: d.plan || null }
+      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null, groups: Array.isArray(d.groups) ? d.groups : [], xpDays: d.xpDays || {}, badges: d.badges || {}, plan: d.plan || null, equip: d.equip || "bodyweight" }
       : null, m), onError),
     watchSharing: (cb, onError) => watch(userRef, (d, m) => cb(d?.shareCode ? { code: d.shareCode, cycle: !!d.shareCycle } : null, m), onError),
     watchLinks: (cb, onError) => watch(userRef, (d, m) => cb({ people: Array.isArray(d?.links) ? d.links : [] }, m), onError),
@@ -416,6 +416,8 @@ const el = {
   badgesPanel: $("badges-panel"), badgesCount: $("badges-count"), badgeGrid: $("badge-grid"),
   workoutsPanel: $("workouts-panel"), planToday: $("plan-today"), planList: $("plan-list"),
   videoFilters: $("video-filters"), videoList: $("video-list"), workoutPageMsg: $("workout-page-msg"),
+  equipChoice: $("equip-choice"), folderBack: $("folder-back"), folderGrid: $("folder-grid"), videoMore: $("video-more"),
+  libraryTitle: $("library-title"), libraryCount: $("library-count"),
   tabbar: $("tabbar"), tabPeriod: $("tab-period"), periodPanel: $("period-panel"),
   installTip: $("install-tip"), installText: $("install-text"), installBtn: $("install-btn"), installClose: $("install-close"),
   linkForm: $("link-form"), linkCode: $("link-code"), linkMsg: $("link-msg"), linkList: $("link-list"),
@@ -749,13 +751,24 @@ el.goalsForm.addEventListener("submit", async (e) => {
 // ---------- Celebrations ----------
 let toastTimer = null;
 const toastQueue = [];
-function showToast(text) {
-  toastQueue.push(text);
+const TOAST_EMOJI = { goal: "🎉", badge: "🏅", level: "⭐", steps: "👟", workout: "💪", info: "✨" };
+function showToast(text, kind = "info") {
+  toastQueue.push({ text, kind });
   if (toastQueue.length === 1) nextToast();
 }
 function nextToast() {
   if (!toastQueue.length) return;
-  el.toast.textContent = toastQueue[0];
+  const { text, kind } = toastQueue[0];
+  const style = kind === "steps" || kind === "workout" ? "goal" : kind;
+  el.toast.className = `toast toast--${style}`;
+  el.toast.replaceChildren();
+  const emoji = document.createElement("span");
+  emoji.className = "toast__emoji";
+  emoji.setAttribute("aria-hidden", "true");
+  emoji.textContent = TOAST_EMOJI[kind] || "✨";
+  const words = document.createElement("span");
+  words.textContent = text;
+  el.toast.append(emoji, words);
   el.toast.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
@@ -774,7 +787,7 @@ function celebrate(keys, log) {
     sleep: `You hit your ${g.sleep}-hour sleep goal!`,
   };
   const all = Object.values(metFlags(log, g)).every(Boolean);
-  showToast(all ? "Every goal reached today. Amazing!" : words[keys[0]]);
+  showToast(all ? "Every goal reached today. Amazing!" : words[keys[0]], "goal");
   burstConfetti();
 }
 
@@ -1902,7 +1915,7 @@ async function updateProgress(onlyDate, { quiet = false } = {}) {
     }
     const after = levelInfo();
     if (!quiet && after.level > before.level) {
-      showToast(`Consistent week! Level up to Level ${after.level} · ${after.name}`);
+      showToast(`Consistent week! Level up to Level ${after.level} · ${after.name}`, "level");
       burstConfetti();
     }
     await awardBadges([...earnedNow()]);
@@ -1919,7 +1932,7 @@ async function awardBadges(ids) {
   const stamp = Object.fromEntries(fresh.map((id) => [id, todayISO()]));
   profile = { ...profile, badges: { ...have, ...stamp } };
   await store.saveBadges(stamp).catch(() => {});
-  for (const id of fresh) showToast(`Badge unlocked: ${BADGES.find((b) => b.id === id).name}!`);
+  for (const id of fresh) showToast(`Badge unlocked: ${BADGES.find((b) => b.id === id).name}!`, "badge");
   burstConfetti();
   render();
 }
@@ -1989,7 +2002,7 @@ function applyPending() {
   try { synced = JSON.parse(sessionStorage.getItem(STEPS_KEY) || "null"); sessionStorage.removeItem(STEPS_KEY); } catch {}
   if (synced && synced.date === todayISO()) {
     edit((l) => { l.steps = synced.steps; });
-    showToast(`Steps updated from Apple Health: ${fmt(synced.steps)}`);
+    showToast(`Steps updated from Apple Health: ${fmt(synced.steps)}`, "steps");
   }
   if (pendingWorkout) {
     const w = pendingWorkout;
@@ -2002,7 +2015,7 @@ function applyPending() {
         notes: w.title.slice(0, 200),
       });
     });
-    showToast(`Logged: ${KINDS[w.kind].label}, ${w.minutes} min. Nice work!`);
+    showToast(`Logged: ${KINDS[w.kind].label}, ${w.minutes} min. Nice work!`, "workout");
   }
 }
 
@@ -2015,7 +2028,95 @@ function logWorkoutToday(video) {
 }
 
 // ---------- Workouts page ----------
-let videoFilter = "all";
+document.getElementById("folder-back").addEventListener("click", () => { openFolder = null; playing = null; render(); });
+document.getElementById("video-more").addEventListener("click", () => { shownVideos += 12; render(); });
+let videoFilter = "all";      // inside a folder: all, bodyweight or dumbbells
+let openFolder = null;        // folder (kind) being browsed
+let shownVideos = 12;         // videos shown before "Show more"
+
+const FOLDER_STYLE = {
+  strength: ["#0F766E", "💪"], upper: ["#1D4ED8", "🏋️"], lower: ["#7C3AED", "🦵"], core: ["#B45309", "🔥"],
+  cardio: ["#BE185D", "🏃"], walk: ["#047857", "🚶"], yoga: ["#0369A1", "🧘"], pilates: ["#9D174D", "🤸"],
+  stretch: ["#4338CA", "🙆"], gentle: ["#C2410C", "🌸"],
+};
+
+function renderLibrary() {
+  // Equipment preference
+  el.equipChoice.replaceChildren();
+  for (const [k, label] of [["bodyweight", "Bodyweight only"], ["dumbbells", "I have dumbbells"]]) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip";
+    chip.textContent = label;
+    chip.setAttribute("aria-pressed", String((profile?.equip || "bodyweight") === k));
+    chip.addEventListener("click", async () => {
+      if (profile?.equip === k) return;
+      profile = { ...(profile || {}), equip: k };
+      render();
+      showToast(k === "dumbbells" ? "Got it! Dumbbell workouts are now in your plan." : "Got it! Bodyweight workouts only.", "info");
+      try { await store.saveProfile({ equip: k }); } catch (err) { handleWriteError(err); }
+    });
+    el.equipChoice.append(chip);
+  }
+
+  el.folderBack.hidden = !openFolder;
+  el.folderGrid.hidden = !!openFolder;
+  el.videoList.hidden = !openFolder;
+  el.videoFilters.hidden = !openFolder;
+
+  if (!openFolder) {
+    el.libraryTitle.textContent = "Video library";
+    el.libraryCount.textContent = `${VIDEOS.length} videos`;
+    el.videoMore.hidden = true;
+    el.folderGrid.replaceChildren();
+    for (const kind of FOLDERS) {
+      const vids = VIDEOS.filter((v) => v.kind === kind);
+      const mins = vids.map((v) => v.minutes);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "folder";
+      btn.style.setProperty("--folder", FOLDER_STYLE[kind][0]);
+      btn.dataset.emoji = FOLDER_STYLE[kind][1];
+      const name = document.createElement("strong");
+      name.textContent = KINDS[kind].label;
+      const meta = document.createElement("small");
+      meta.textContent = `${vids.length} videos · ${Math.min(...mins)}–${Math.max(...mins)} min`;
+      btn.append(name, meta);
+      btn.addEventListener("click", () => {
+        openFolder = kind;
+        videoFilter = "all";
+        shownVideos = 12;
+        playing = null;
+        render();
+        el.libraryTitle.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      el.folderGrid.append(btn);
+    }
+    return;
+  }
+
+  const all = VIDEOS.filter((v) => v.kind === openFolder);
+  const hasEquip = all.some((v) => v.equip === "dumbbells");
+  el.libraryTitle.textContent = `${FOLDER_STYLE[openFolder][1]} ${KINDS[openFolder].label}`;
+  el.libraryCount.textContent = `${all.length} videos`;
+  el.videoFilters.hidden = !hasEquip;
+  el.videoFilters.replaceChildren();
+  if (hasEquip) {
+    for (const [k, label] of [["all", "All"], ["bodyweight", "Bodyweight"], ["dumbbells", "Dumbbells"]]) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip";
+      chip.textContent = `${label} (${k === "all" ? all.length : all.filter((v) => (v.equip || "bodyweight") === k).length})`;
+      chip.setAttribute("aria-pressed", String(videoFilter === k));
+      chip.addEventListener("click", () => { videoFilter = k; shownVideos = 12; render(); });
+      el.videoFilters.append(chip);
+    }
+  }
+  const list = all.filter((v) => videoFilter === "all" || (v.equip || "bodyweight") === videoFilter);
+  el.videoList.replaceChildren();
+  for (const v of list.slice(0, shownVideos)) el.videoList.append(videoCard(v));
+  el.videoMore.hidden = list.length <= shownVideos;
+}
 let playing = null; // video id playing inline
 
 const dayIndex = () => (fromISO(todayISO()).getDay() + 6) % 7; // Monday = 0
@@ -2051,7 +2152,7 @@ function videoCard(v) {
   title.textContent = v.title;
   const meta = document.createElement("div");
   meta.className = "video__meta";
-  meta.textContent = [KINDS[v.kind].label, `about ${v.minutes} min`, v.by].filter(Boolean).join(" · ");
+  meta.textContent = [KINDS[v.kind].label, `${v.minutes} min`, v.equip === "dumbbells" ? "Dumbbells" : v.equip === "bodyweight" ? "Bodyweight" : "", v.by].filter(Boolean).join(" · ");
   const actions = document.createElement("div");
   actions.className = "video__actions";
   const log = document.createElement("button");
@@ -2094,10 +2195,17 @@ function plansForMe() {
   return list;
 }
 
+// Today's video from a folder: bodyweight only unless you have dumbbells.
+// n is a day number, so it moves through the whole folder before repeating.
 function pickVideo(kind, n) {
-  const options = VIDEOS.filter((v) => v.kind === kind);
+  let options = VIDEOS.filter((v) => v.kind === kind);
+  if (profile?.equip !== "dumbbells") {
+    const bodyweight = options.filter((v) => v.equip !== "dumbbells");
+    if (bodyweight.length) options = bodyweight;
+  }
   return options.length ? options[((n % options.length) + options.length) % options.length] : null;
 }
+const dayNumber = () => Math.floor(fromISO(todayISO()).getTime() / 86400000);
 
 function phaseStrip(phase) {
   const strip = document.createElement("div");
@@ -2143,7 +2251,7 @@ function renderWorkoutsPage() {
       go.href = "#cycle";
       go.className = "btn btn--small btn--fit";
       go.textContent = "Go to Cycle";
-      el.planToday.append(h, p, go, videoCard(pickVideo("walk", dayIndex())));
+      el.planToday.append(h, p, go, videoCard(pickVideo("walk", dayNumber())));
     } else {
       const list = PHASE_WORKOUTS[ph.phase];
       const n = diffDays(ph.since, todayISO());
@@ -2153,7 +2261,7 @@ function renderWorkoutsPage() {
       tip.className = "hint";
       tip.textContent = `Cycle day ${ph.day}. ${PHASE_TIPS[ph.phase]}`;
       el.planToday.append(h, tip, phaseStrip(ph.phase));
-      const v = pickVideo(kind, Math.floor(n / list.length));
+      const v = pickVideo(kind, dayNumber());
       if (v) el.planToday.append(videoCard(v));
     }
   } else {
@@ -2167,7 +2275,7 @@ function renderWorkoutsPage() {
     el.planToday.append(h, sub, weekStrip(current));
     if (kind !== "rest") {
       const weekNo = Math.floor(fromISO(todayISO()).getTime() / (7 * 86400000));
-      const v = pickVideo(kind, weekNo + dayIndex());
+      const v = pickVideo(kind, dayNumber());
       if (v) el.planToday.append(videoCard(v));
     }
   }
@@ -2202,19 +2310,7 @@ function renderWorkoutsPage() {
     el.planList.append(card);
   }
 
-  // Video library
-  el.videoFilters.replaceChildren();
-  for (const [k, label] of [["all", "All"], ...Object.entries(KINDS).filter(([k]) => k !== "rest").map(([k, v]) => [k, v.label])]) {
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = "chip";
-    chip.textContent = label;
-    chip.setAttribute("aria-pressed", String(videoFilter === k));
-    chip.addEventListener("click", () => { videoFilter = k; render(); });
-    el.videoFilters.append(chip);
-  }
-  el.videoList.replaceChildren();
-  for (const v of VIDEOS.filter((x) => videoFilter === "all" || x.kind === videoFilter)) el.videoList.append(videoCard(v));
+  renderLibrary();
 }
 
 // ---------- Groups ----------

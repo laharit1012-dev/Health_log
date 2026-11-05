@@ -56,7 +56,11 @@ When someone views a person who shares their cycle tracker, they're asked once: 
 
 ## Workouts
 
-The **Workouts** tab offers weekly plans and a library of beginner-friendly YouTube videos (walking, full body, upper body, lower body, core, cardio, Pilates, yoga, period yoga, stretching), listed in `workouts.js`. Start a plan to get today's workout with a video at the top; **Log it** adds the workout to Today, which earns points.
+The **Workouts** tab has weekly plans and a **video library of about 200 YouTube workouts in 10 folders**: Full body, Upper body, Lower body (each with bodyweight and dumbbell videos, mostly 20–30 min), Core, Cardio, Walking, Yoga, Pilates, Stretching and Period yoga. Videos are listed in `workouts.js`.
+
+- **My equipment:** *Bodyweight only* (default) or *I have dumbbells*. Today's workout follows this choice.
+- **Today's workout** comes from your plan and moves through the whole folder day by day, so it doesn't repeat for weeks.
+- Open a folder to browse it, filter by Bodyweight/Dumbbells, play a video inline, and **Log it** to add it to Today (earning points).
 
 - **Women:** **Cycle Sync** (shown first) picks today's workout from her cycle phase. Period: gentle yoga, walks and stretching. Follicular: strength, upper and lower body, cardio. Ovulation: cardio, strength, lower body. Luteal: Pilates, core, walks, yoga. Without a logged period it suggests a walk and asks her to log one on the Cycle page. Strong at Home, Walk More, Yoga & Flexibility and Cardio Boost are also offered.
 - **Men:** Upper / Lower Split, Full Body Strength and Core & Cardio (shown first), plus Walk More, Yoga & Flexibility and Cardio Boost.

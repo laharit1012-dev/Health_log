@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=32">
+  <link rel="stylesheet" href="styles.css?v=33">
 </head>
 <body>
   <!-- Background wallpaper: full on Today, dimmed on the other pages -->
@@ -377,9 +377,19 @@
       </div>
 
       <div class="stack stack--tight">
-        <h3>Video library</h3>
-        <div id="video-filters" class="chips" role="group" aria-label="Filter videos"></div>
-        <div id="video-list" class="video-list"></div>
+        <div class="section-head">
+          <h3 id="library-title">Video library</h3>
+          <span id="library-count" class="hint"></span>
+        </div>
+        <div class="equip-row">
+          <span class="hint">My equipment</span>
+          <div id="equip-choice" class="chips" role="group" aria-label="My equipment"></div>
+        </div>
+        <button id="folder-back" class="link-btn group-back" type="button" hidden>‹ All folders</button>
+        <div id="folder-grid" class="folder-grid"></div>
+        <div id="video-filters" class="chips" role="group" aria-label="Filter videos" hidden></div>
+        <div id="video-list" class="video-list" hidden></div>
+        <button id="video-more" class="btn btn--ghost btn--fit" type="button" hidden>Show more videos</button>
         <p class="hint">Videos play from YouTube. If one doesn't load, use <em>Watch on YouTube</em>. Go at your own pace and stop if anything hurts.</p>
       </div>
       <p id="workout-page-msg" class="view-note" hidden></p>
@@ -625,13 +635,13 @@
   </nav>
 
   <footer class="site-footer">
-    <p>Health Log · version <span id="app-version">32</span> · <a href="privacy.html">Privacy policy</a></p>
+    <p>Health Log · version <span id="app-version">33</span> · <a href="privacy.html">Privacy policy</a></p>
   </footer>
 
   <!-- Goal celebrations -->
   <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <script type="module" src="app.js?v=32"></script>
+  <script type="module" src="app.js?v=33"></script>
 </body>
 </html>
