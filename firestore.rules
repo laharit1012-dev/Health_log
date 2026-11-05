@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Each person's own log: only they can read or change it.
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      match /days/{day} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // Shared copies, only while someone has sharing turned on.
+    // Anyone signed in can open a copy if they know its code,
+    // but nobody can list codes, and only the owner can change it.
+    match /shares/{code} {
+      allow get: if request.auth != null;
+      allow list: if false;
+      allow create: if request.auth != null
+                    && request.resource.data.owner == request.auth.uid;
+      allow update: if request.auth != null
+                    && resource.data.owner == request.auth.uid
+                    && request.resource.data.owner == request.auth.uid;
+      allow delete: if request.auth != null
+                    && resource.data.owner == request.auth.uid;
+
+      match /days/{day} {
+        allow get: if request.auth != null;
+        allow list, write: if request.auth != null
+          && get(/databases/$(database)/documents/shares/$(code)).data.owner == request.auth.uid;
+      }
+    }
+  }
+}
