@@ -1104,3 +1104,35 @@ body[data-route="today"] .goals-row {
 .dot.is-today { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .member__remove { justify-self: start; }
+
+/* Member box: rank, name, activity ring */
+.member__head { align-items: center; flex-wrap: nowrap; gap: 0.75rem; }
+.member__rank {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.75rem;
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+}
+.member__rank.is-first { background: var(--warm-soft); color: var(--warm); }
+.member__who { flex: 1; min-width: 0; display: grid; gap: 0.125rem; justify-items: start; }
+.member__place { font-size: 0.8125rem; color: var(--muted); }
+.member__who .badge { margin-top: 0.25rem; }
+
+.rate { position: relative; width: 4rem; height: 4rem; flex-shrink: 0; }
+.rate svg { width: 100%; height: 100%; display: block; }
+.rate__track { fill: none; stroke: var(--border); stroke-width: 6; }
+.rate__fill { fill: none; stroke: var(--accent); stroke-width: 6; stroke-linecap: round; }
+.rate__text {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  line-height: 1.05;
+}
+.rate__text strong { font-size: 0.9375rem; font-variant-numeric: tabular-nums; }
+.rate__text small { font-size: 0.5625rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.rate { width: 4.5rem; height: 4.5rem; }
+.rate__text strong { font-size: 0.875rem; }
+.rate__text small { font-size: 0.625rem; }

@@ -15,7 +15,7 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=22";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=23";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -1749,6 +1749,48 @@ function statusFor(sm) {
   return { text: "Needs a nudge", cls: "badge--quiet" };
 }
 
+// Activity rate: progress toward steps, workout and sleep goals, plus food logged.
+// Each part counts for a quarter and is capped at 100%.
+function activityRate(sm) {
+  if (!sm) return 0;
+  const part = (v, goal) => (goal > 0 ? Math.min(1, (v || 0) / goal) : 0);
+  const parts = [part(sm.st, sm.stg), part(sm.wo, sm.wog), sm.sl == null ? 0 : part(sm.sl, sm.slg), sm.fd > 0 ? 1 : 0];
+  return Math.round((parts.reduce((a, b) => a + b, 0) / 4) * 100);
+}
+
+// Average activity over the last 7 days (days with nothing logged count as 0)
+function weeklyRate(m) {
+  let total = 0;
+  for (let i = 0; i < 7; i++) total += activityRate(m.days?.[shiftDate(todayISO(), -i)]);
+  return Math.round(total / 7);
+}
+
+const ordinal = (n) => {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+};
+
+function rateRing(pct, label) {
+  const r = 22, c = 2 * Math.PI * r;
+  const wrap = document.createElement("div");
+  wrap.className = "rate";
+  wrap.setAttribute("role", "img");
+  wrap.setAttribute("aria-label", `Activity ${label}: ${pct}%`);
+  wrap.innerHTML = `<svg viewBox="0 0 56 56" aria-hidden="true">
+      <circle cx="28" cy="28" r="${r}" class="rate__track"/>
+      <circle cx="28" cy="28" r="${r}" class="rate__fill" stroke-dasharray="${(c * pct) / 100} ${c}" transform="rotate(-90 28 28)"/>
+    </svg>`;
+  const txt = document.createElement("span");
+  txt.className = "rate__text";
+  const num = document.createElement("strong");
+  num.textContent = `${pct}%`;
+  const sub = document.createElement("small");
+  sub.textContent = label;
+  txt.append(num, sub);
+  wrap.append(txt);
+  return wrap;
+}
+
 function weekCount(m) {
   let n = 0;
   for (let i = 0; i < 7; i++) {
@@ -1831,11 +1873,13 @@ function renderGroups() {
   el.groupCount.textContent = groupLoaded ? `${groupMembers.length} member${groupMembers.length === 1 ? "" : "s"}` : "Loading…";
 
   const today = todayISO();
-  const sorted = [...groupMembers].sort((a, b) => {
-    const ta = a.days?.[today] ? metCount(a.days[today]) : -1;
-    const tb = b.days?.[today] ? metCount(b.days[today]) : -1;
-    return tb - ta || weekCount(b) - weekCount(a) || (a.name || "").localeCompare(b.name || "");
-  });
+  const sorted = [...groupMembers].sort((a, b) =>
+    weeklyRate(b) - weeklyRate(a) ||
+    activityRate(b.days?.[today]) - activityRate(a.days?.[today]) ||
+    (a.name || "").localeCompare(b.name || ""));
+  // Equal weekly rates share a rank
+  const ranks = [];
+  sorted.forEach((m, i) => { ranks[i] = i > 0 && weeklyRate(m) === weeklyRate(sorted[i - 1]) ? ranks[i - 1] : i + 1; });
 
   el.groupMembers.replaceChildren();
   sorted.forEach((m, i) => {
@@ -1846,17 +1890,23 @@ function renderGroups() {
 
     const head = document.createElement("div");
     head.className = "member__head";
-    const rank = document.createElement("span");
-    rank.className = "member__rank";
-    rank.textContent = String(i + 1);
+    const rankBox = document.createElement("div");
+    rankBox.className = "member__rank" + (ranks[i] === 1 && weeklyRate(m) > 0 ? " is-first" : "");
+    rankBox.textContent = `#${ranks[i]}`;
+    const who = document.createElement("div");
+    who.className = "member__who";
     const name = document.createElement("span");
     name.className = "member__name";
-    name.textContent = (m.name || "Member") + (me ? " (you)" : "") + (m.id === groupInfo?.owner ? " · creator" : "");
+    name.textContent = (m.name || "Member") + (me ? " (you)" : "");
+    const place = document.createElement("span");
+    place.className = "member__place";
+    place.textContent = `${ordinal(ranks[i])} of ${sorted.length} overall` + (m.id === groupInfo?.owner ? " · group creator" : "");
     const st = statusFor(sm);
     const badge = document.createElement("span");
     badge.className = "badge " + st.cls;
     badge.textContent = st.text;
-    head.append(rank, name, badge);
+    who.append(name, place, badge);
+    head.append(rankBox, who, rateRing(activityRate(sm), "today"));
 
     const stats = document.createElement("dl");
     stats.className = "member__stats";
@@ -1872,8 +1922,8 @@ function renderGroups() {
     };
     stat("Steps", sm ? fmt(sm.st) : "—", sm ? `of ${fmt(sm.stg)}` : "", met.steps);
     stat("Workout", sm ? `${fmt(sm.wo)} min` : "—", sm ? `of ${sm.wog} min` : "", met.workout);
-    stat("Sleep", sm && sm.sl != null ? formatHours(sm.sl) : "—", sm ? `of ${sm.slg} h` : "", met.sleep);
     stat("Food", sm ? (sm.fd ? `${sm.fd} logged` : "None yet") : "—", sm && sm.kc ? `${fmt(sm.kc)} kcal` : "", met.food);
+    stat("Sleep", sm && sm.sl != null ? formatHours(sm.sl) : "—", sm ? `of ${sm.slg} h` : "", met.sleep);
 
     const week = document.createElement("div");
     week.className = "member__week";
@@ -1889,7 +1939,7 @@ function renderGroups() {
       dots.append(dot);
     }
     const wtext = document.createElement("span");
-    wtext.textContent = `On track ${weekCount(m)} of the last 7 days`;
+    wtext.textContent = `Weekly activity ${weeklyRate(m)}% · on track ${weekCount(m)} of 7 days`;
     week.append(dots, wtext);
 
     li.append(head, stats, week);

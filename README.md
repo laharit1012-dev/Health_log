@@ -43,7 +43,9 @@ Setup (once):
 
 On the **Family** page, under **Groups**:
 - **Create a group** (for example "Fit Family") and share its invite code, or **Join a group** with a code. You can be in up to 10 groups.
-- The group page ranks members by today's progress, with a status (**Crushing it**, **On track**, **Getting there**, **Needs a nudge**), today's steps, workout minutes, sleep and food (items logged and calories), and a 7-day strip of days on track (3 or more of the 4 goals met).
+- Each member has a box with their **overall rank** in the group, name, **activity rate** for today, and today's steps, workout, food (items logged and calories) and sleep, plus a 7-day strip.
+- **Activity rate:** progress toward the steps, workout and sleep goals, plus whether food was logged. Each part counts for a quarter and is capped at 100%.
+- **Overall rank:** by average activity rate over the last 7 days (days with nothing logged count as 0); ties share a rank.
 - Shared with the group: steps, workout minutes, sleep hours, number of food items and calories, and goals, for the last 7 days. Never what was eaten, notes, or the cycle tracker.
 - The creator can remove members or delete the group; anyone can leave.
 
