@@ -15,8 +15,8 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=29";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=29";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=30";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=30";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -1776,13 +1776,15 @@ function dailyTitle(points) {
   return "Not started";
 }
 
-// Points for one day: up to 100, split evenly across four logs (25 each).
-// Steps, water and workout earn their share of your goal; food earns 25 for
-// three meals logged (breakfast, lunch, dinner or snack).
-const POINTS_EACH = 25;
+// Points for one day: up to 100, split evenly across five logs (20 each).
+// Steps, water, sleep and workout earn their share of your goal; food earns 20
+// for three meals logged (breakfast, lunch, dinner or snack).
+const POINTS_EACH = 20;
 const part = (v, goal) => (goal > 0 ? Math.min(1, (Number(v) || 0) / goal) : 0);
-function pointsFrom({ steps, stepsGoal, water, waterGoal, workout, workoutGoal, meals }) {
-  return Math.round(POINTS_EACH * (part(steps, stepsGoal) + part(water, waterGoal) + part(workout, workoutGoal) + Math.min(1, (meals || 0) / 3)));
+function pointsFrom({ steps, stepsGoal, water, waterGoal, sleep, sleepGoal, workout, workoutGoal, meals }) {
+  return Math.round(POINTS_EACH * (
+    part(steps, stepsGoal) + part(water, waterGoal) + part(sleep, sleepGoal) +
+    part(workout, workoutGoal) + Math.min(1, (meals || 0) / 3)));
 }
 const mealsLogged = (foods) => new Set(foods.map((f) => f.meal || "Snack")).size;
 
@@ -1791,6 +1793,7 @@ function dayXP(log, g) {
   return pointsFrom({
     steps: n.steps, stepsGoal: g.steps,
     water: n.water, waterGoal: g.water,
+    sleep: sleepHours(n.sleep.bed, n.sleep.wake), sleepGoal: g.sleep,
     workout: workoutMinutes(n), workoutGoal: g.workout,
     meals: mealsLogged(n.foods),
   });
@@ -1984,6 +1987,7 @@ function summaryPoints(sm) {
   return pointsFrom({
     steps: sm.st, stepsGoal: sm.stg,
     water: sm.wa, waterGoal: sm.wag,
+    sleep: sm.sl, sleepGoal: sm.slg,
     workout: sm.wo, workoutGoal: sm.wog,
     meals: sm.ml ?? Math.min(3, sm.fd || 0),
   });
