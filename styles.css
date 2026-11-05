@@ -952,8 +952,8 @@ body.has-tabbar { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px)
 
 /* ---------- Wallpaper ---------- */
 :root { --wallpaper: url("bg/wallpaper-light.svg?v=18"); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --wallpaper: url("bg/wallpaper-dark.svg?v=18"); } }
-:root[data-theme="dark"] { --wallpaper: url("bg/wallpaper-dark.svg?v=18"); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --wallpaper: url("bg/wallpaper-dark.svg?v=19"); } }
+:root[data-theme="dark"] { --wallpaper: url("bg/wallpaper-dark.svg?v=19"); }
 
 .wallpaper {
   position: fixed;
