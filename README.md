@@ -6,8 +6,9 @@ A private daily health log for family and friends.
 
 Everyone signs up with their own email and password and sees only their own log.
 
-The app has four pages, switched with the tab bar at the bottom:
+The app has these pages, switched with the tab bar at the bottom:
 - **Today:** your day summary, goals and the daily log.
+- **Period** (women only, or when viewing someone who shared theirs): cycle day, expected next period, and logged start dates.
 - **Family:** share codes and linked family members.
 - **Reminders:** water and workout reminders.
 - **Account:** sign out, privacy policy and Delete my account.

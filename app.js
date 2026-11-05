@@ -15,7 +15,7 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=18";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=20";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -363,7 +363,7 @@ const el = {
   remPanel: $("reminders-panel"), remNote: $("rem-note"), remBody: $("rem-body"), remMsg: $("rem-msg"), remTest: $("rem-test"),
   remWaterOn: $("rem-water-on"), remWaterFrom: $("rem-water-from"), remWaterTo: $("rem-water-to"), remWaterEvery: $("rem-water-every"),
   remWorkoutOn: $("rem-workout-on"), remWorkoutTime: $("rem-workout-time"),
-  tabbar: $("tabbar"),
+  tabbar: $("tabbar"), tabPeriod: $("tab-period"), periodPanel: $("period-panel"),
   installTip: $("install-tip"), installText: $("install-text"), installBtn: $("install-btn"), installClose: $("install-close"),
   linkForm: $("link-form"), linkCode: $("link-code"), linkMsg: $("link-msg"), linkList: $("link-list"),
 };
@@ -384,7 +384,7 @@ function setValue(input, value) {
 const caloriesOf = (log) => log.foods.reduce((sum, f) => sum + (Number(f.calories) || 0), 0);
 
 // ---------- Pages ----------
-const ROUTES = ["today", "family", "reminders", "account"];
+const ROUTES = ["today", "period", "family", "reminders", "account"];
 const routeFromHash = () => {
   const r = location.hash.replace("#", "");
   return ROUTES.includes(r) ? r : "today";
@@ -417,6 +417,13 @@ function render() {
 
   el.signin.hidden = !signedOut || !el.verifyPanel.hidden;
   const inApp = !signedOut && !!store;
+  // Period page: women, or when viewing someone who shared their period tracker
+  const periodAvailable = viewing ? !!viewCycle : isFemale();
+  if (route === "period" && inApp && !periodAvailable && profile) {
+    route = "today";
+    history.replaceState(null, "", "#today");
+  }
+  el.tabPeriod.hidden = !periodAvailable;
   const on = (r) => inApp && route === r;
   el.tabbar.hidden = !inApp;
   document.body.dataset.route = inApp ? route : "signin";
@@ -429,11 +436,12 @@ function render() {
   el.dayBar.hidden = !on("today");
   el.summaryPanel.hidden = !on("today");
   el.panel.hidden = !on("today");
+  el.periodPanel.hidden = !on("period");
   el.linkPanel.hidden = !on("family") || !store?.canLink || !!blocked;
   el.accountPanel.hidden = !on("account");
   el.remPanel.hidden = !on("reminders") || !!blocked;
   if (me) el.accountEmail.textContent = me.email;
-  el.people.hidden = !on("today") || links.length === 0;
+  el.people.hidden = !(on("today") || on("period")) || links.length === 0;
   if (signedOut || !store) return;
 
   renderPeople();
@@ -441,6 +449,7 @@ function render() {
   renderGoals();
   renderNudge();
   renderReminders();
+  renderCycle();
   renderPanel();
   renderLinkPanel();
   setStatus();
@@ -808,9 +817,9 @@ function cycleInfo(cycle, refISO) {
 }
 
 function renderCycle() {
-  const show = viewing ? !!viewCycle : isFemale() && !!store;
-  el.cycleSection.hidden = !show;
+  const show = !el.periodPanel.hidden && (viewing ? !!viewCycle : isFemale());
   if (!show) return;
+  const date = todayISO(); // the Period page is always about today
 
   const ro = readOnly();
   const cycle = (viewing ? viewCycle : profile.cycle) || {};
@@ -838,7 +847,7 @@ function renderCycle() {
   if (viewing && !last && !starts.length) el.cycleHint.textContent = "No periods logged yet.";
 
   el.cycleDate.max = todayISO();
-  if (!el.cycleDate.value) el.cycleDate.value = date;
+  if (!el.cycleDate.value) el.cycleDate.value = todayISO();
   setValue(el.cycleLength, cycle.length ?? "");
   el.cycleLength.placeholder = String(avg || 28);
   el.cycleAvg.textContent = avg
@@ -947,8 +956,6 @@ function renderPanel() {
   else if (hours >= g.sleep) el.sleepHint.textContent = `${formatHours(hours)} of sleep · goal of ${g.sleep}h reached`;
   else el.sleepHint.textContent = `${formatHours(hours)} of sleep · ${formatHours(g.sleep - hours)} short of your ${g.sleep}h goal`;
 
-  // Period (women only, private)
-  renderCycle();
 
   // Workouts
   renderWorkouts(log);
