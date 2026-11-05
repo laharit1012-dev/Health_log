@@ -1,0 +1,25 @@
+name: Check database rules
+
+on:
+  workflow_dispatch:   # run by hand from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install
+        working-directory: reminders
+        run: npm install --no-audit --no-fund
+      - name: Compare published rules with firestore.rules
+        working-directory: reminders
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node check-rules.mjs
