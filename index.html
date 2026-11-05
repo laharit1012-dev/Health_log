@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=21">
+  <link rel="stylesheet" href="styles.css?v=22">
 </head>
 <body>
   <!-- Background wallpaper: full on Today, dimmed on the other pages -->
@@ -429,6 +429,59 @@
       </div>
     </section>
 
+    <!-- Groups: cheer each other on (Family page) -->
+    <section id="groups-panel" class="link-panel" aria-labelledby="groups-title" hidden>
+      <div id="groups-list-view" class="stack">
+        <div class="stack stack--tight">
+          <h2 id="groups-title">Groups</h2>
+          <p class="hint">Make a group with family or friends to cheer each other on. Members see each other's steps, workouts, sleep, and whether food was logged. Never what you ate or your cycle tracker.</p>
+        </div>
+        <ul id="group-list" class="link-list" aria-label="Your groups"></ul>
+        <div class="link-grid">
+          <form id="group-create-form" class="log-block" novalidate>
+            <span class="block-label">Create a group</span>
+            <input id="group-name" type="text" placeholder="e.g. Fit Family" maxlength="40" aria-label="Group name" autocomplete="off">
+            <button class="btn btn--fit" type="submit">Create group</button>
+          </form>
+          <form id="group-join-form" class="log-block" novalidate>
+            <span class="block-label">Join a group</span>
+            <input id="group-code" type="text" placeholder="Group code, e.g. K7QF-9XMA-2PDW" aria-label="Group code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="20">
+            <button class="btn btn--fit" type="submit">Join group</button>
+          </form>
+        </div>
+        <p id="groups-msg" class="hint" aria-live="polite"></p>
+      </div>
+
+      <div id="group-detail-view" class="stack" hidden>
+        <button id="group-back" class="link-btn group-back" type="button">‹ All groups</button>
+        <div class="section-head">
+          <h2 id="group-title"></h2>
+          <span id="group-count" class="hint"></span>
+        </div>
+        <p id="group-note" class="view-note" hidden></p>
+        <ol id="group-members" class="group-members" aria-label="Members, best first"></ol>
+        <div class="log-block group-invite">
+          <span class="block-label">Invite code</span>
+          <output id="group-invite-code" class="share-code"></output>
+          <div class="row">
+            <button id="group-copy" class="btn btn--small" type="button">Copy code</button>
+          </div>
+          <p class="hint">Anyone with this code can join and see the group's insights. Share it only with people you want in the group.</p>
+        </div>
+        <div class="row">
+          <button id="group-leave" class="btn btn--ghost btn--danger" type="button">Leave group</button>
+        </div>
+        <div id="group-leave-confirm" class="confirm" hidden>
+          <p id="group-leave-text"></p>
+          <div class="row">
+            <button id="group-leave-yes" class="btn btn--danger-solid" type="button"></button>
+            <button id="group-leave-no" class="btn btn--ghost" type="button">Cancel</button>
+          </div>
+        </div>
+        <p id="group-msg" class="hint" aria-live="polite"></p>
+      </div>
+    </section>
+
     <!-- Account: privacy and deletion -->
     <section id="account-panel" class="link-panel" aria-labelledby="account-title" hidden>
       <div class="stack stack--tight">
@@ -479,13 +532,13 @@
   </nav>
 
   <footer class="site-footer">
-    <p>Health Log · version <span id="app-version">21</span> · <a href="privacy.html">Privacy policy</a></p>
+    <p>Health Log · version <span id="app-version">22</span> · <a href="privacy.html">Privacy policy</a></p>
   </footer>
 
   <!-- Goal celebrations -->
   <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <script type="module" src="app.js?v=21"></script>
+  <script type="module" src="app.js?v=22"></script>
 </body>
 </html>

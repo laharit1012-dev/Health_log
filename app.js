@@ -15,7 +15,7 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=21";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=22";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -153,7 +153,7 @@ function firestoreStore(db, uid) {
     kind: "account",
     canLink: true,
     watchProfile: (cb, onError) => watch(userRef, (d, m) => cb(d
-      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null }
+      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null, groups: Array.isArray(d.groups) ? d.groups : [] }
       : null, m), onError),
     watchSharing: (cb, onError) => watch(userRef, (d, m) => cb(d?.shareCode ? { code: d.shareCode, cycle: !!d.shareCycle } : null, m), onError),
     watchLinks: (cb, onError) => watch(userRef, (d, m) => cb({ people: Array.isArray(d?.links) ? d.links : [] }, m), onError),
@@ -169,6 +169,33 @@ function firestoreStore(db, uid) {
       ...(device ? { pushTokens: arrayUnion(device) } : {}),
     }),
     removeDevice: (device) => mergeUser({ pushTokens: arrayRemove(device) }),
+
+    // Groups: groups/<code> { owner, name }, groups/<code>/members/<uid> { name, days }
+    uid,
+    saveGroups: (groups) => mergeUser({ groups }),
+    async getGroup(code) {
+      try {
+        const snap = await getDoc(doc(db, "groups", code));
+        return snap.exists() ? snap.data() : null;
+      } catch (err) {
+        if (err?.code === "permission-denied") return null;
+        throw err;
+      }
+    },
+    createGroup: (code, name) => setDoc(doc(db, "groups", code), { owner: uid, name, createdAt: Date.now() }),
+    saveMember: (code, data) => setDoc(doc(db, "groups", code, "members", uid), data),
+    leaveGroup: (code) => deleteDoc(doc(db, "groups", code, "members", uid)),
+    removeMember: (code, memberUid) => deleteDoc(doc(db, "groups", code, "members", memberUid)),
+    async deleteGroup(code) {
+      const snap = await getDocs(collection(db, "groups", code, "members"));
+      for (const d of snap.docs) if (d.id !== uid) await deleteDoc(d.ref);
+      await deleteDoc(doc(db, "groups", code, "members", uid)).catch(() => {});
+      await deleteDoc(doc(db, "groups", code));
+    },
+    watchGroup: (code, cb, onError) => watch(doc(db, "groups", code), cb, onError),
+    watchGroupMembers: (code, cb, onError) => onSnapshot(collection(db, "groups", code, "members"),
+      (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      (err) => onError?.(err)),
     saveSharing: (code, shareCycle = false) => mergeUser({ shareCode: code, shareCycle }),
     saveLinks: (people) => mergeUser({ links: people }),
 
@@ -244,6 +271,7 @@ let viewName = "";         // name of the linked person being viewed
 let viewCycle = null;      // their period data, only if they chose to share it
 let viewGoals = null;      // their goals
 let recent = null;         // { date: steps } for the last 60 days, for the streak
+let recentLogs = null;     // { date: log } for the last 60 days, for group insights
 let viewGone = false;      // the linked person stopped sharing
 let pendingShare = false;  // create a code as soon as a name is saved
 
@@ -295,6 +323,7 @@ function flush(d) {
     .then(() => (sharing?.code ? store.mirrorDay(sharing.code, log) : null))
     .then(() => {
       if (recent) recent[log.date] = log.steps || 0;
+      if (recentLogs) { recentLogs[log.date] = log; syncGroups(); }
       if (drafts[d] === log) delete drafts[d];
     })
     .catch((err) => handleWriteError(err))
@@ -363,6 +392,12 @@ const el = {
   remPanel: $("reminders-panel"), remNote: $("rem-note"), remBody: $("rem-body"), remMsg: $("rem-msg"), remTest: $("rem-test"),
   remWaterOn: $("rem-water-on"), remWaterFrom: $("rem-water-from"), remWaterTo: $("rem-water-to"), remWaterEvery: $("rem-water-every"),
   remWorkoutOn: $("rem-workout-on"), remWorkoutTime: $("rem-workout-time"),
+  groupsPanel: $("groups-panel"), groupsListView: $("groups-list-view"), groupList: $("group-list"),
+  groupCreateForm: $("group-create-form"), groupName: $("group-name"), groupJoinForm: $("group-join-form"), groupCode: $("group-code"),
+  groupsMsg: $("groups-msg"), groupDetail: $("group-detail-view"), groupBack: $("group-back"), groupTitle: $("group-title"),
+  groupCount: $("group-count"), groupNote: $("group-note"), groupMembers: $("group-members"), groupInvite: $("group-invite-code"),
+  groupCopy: $("group-copy"), groupLeave: $("group-leave"), groupLeaveConfirm: $("group-leave-confirm"), groupLeaveText: $("group-leave-text"),
+  groupLeaveYes: $("group-leave-yes"), groupLeaveNo: $("group-leave-no"), groupMsg: $("group-msg"),
   tabbar: $("tabbar"), tabPeriod: $("tab-period"), periodPanel: $("period-panel"),
   installTip: $("install-tip"), installText: $("install-text"), installBtn: $("install-btn"), installClose: $("install-close"),
   linkForm: $("link-form"), linkCode: $("link-code"), linkMsg: $("link-msg"), linkList: $("link-list"),
@@ -399,6 +434,7 @@ function goTo(r) {
 
 window.addEventListener("hashchange", () => {
   route = routeFromHash();
+  if (route !== "family" && openGroup) closeGroupView();
   render();
   window.scrollTo(0, 0);
 });
@@ -439,6 +475,7 @@ function render() {
   el.panel.hidden = !on("today");
   el.periodPanel.hidden = !on("cycle");
   el.linkPanel.hidden = !on("family") || !store?.canLink || !!blocked;
+  el.groupsPanel.hidden = !on("family") || !store?.canLink || !!blocked;
   el.accountPanel.hidden = !on("account");
   el.remPanel.hidden = !on("reminders") || !!blocked;
   if (me) el.accountEmail.textContent = me.email;
@@ -451,6 +488,7 @@ function render() {
   renderNudge();
   renderReminders();
   renderCycle();
+  renderGroups();
   renderPanel();
   renderLinkPanel();
   setStatus();
@@ -668,6 +706,7 @@ el.goalsForm.addEventListener("submit", async (e) => {
   try {
     await store.saveProfile({ goals });
     await syncShareProfile();
+    syncGroups();
   } catch (err) {
     handleWriteError(err);
     render();
@@ -740,7 +779,9 @@ async function loadRecent() {
   try {
     const days = await store.daysSince(shiftDate(todayISO(), -60));
     recent = Object.fromEntries(days.map((d) => [d.date, d.steps || 0]));
+    recentLogs = Object.fromEntries(days.map((d) => [d.date, d]));
     render();
+    syncGroups();
   } catch { recent = null; }
 }
 
@@ -1110,6 +1151,7 @@ el.renameForm.addEventListener("submit", async (e) => {
     try {
       await store.saveProfile(changes);
       if (sharing?.code) await syncShareProfile();
+      syncGroups();
     } catch (err) {
       handleWriteError(err);
       render();
@@ -1646,6 +1688,329 @@ async function forgetThisDevice() {
   } catch {}
 }
 
+// ---------- Groups ----------
+// Each member keeps a small summary of their last 7 days in every group they're in.
+// Shared: steps, workout minutes, sleep hours, food item count and calories, and goals.
+// Not shared: what was eaten, notes, the cycle tracker.
+let openGroup = null;        // code of the group being viewed
+let groupInfo = null;        // { owner, name }
+let groupMembers = [];
+let groupLoaded = false;
+let unwatchGroup = [];
+let removeArmed = null;      // member id waiting for a second tap to remove
+
+function daySummary(log, g) {
+  const n = normalize(log, log?.date);
+  return {
+    st: n.steps || 0, stg: g.steps,
+    wo: workoutMinutes(n), wog: g.workout,
+    sl: sleepHours(n.sleep.bed, n.sleep.wake), slg: g.sleep,
+    fd: n.foods.length, kc: caloriesOf(n),
+  };
+}
+
+function memberData() {
+  const g = goalsFor(profile?.goals);
+  const days = {};
+  for (let i = 6; i >= 0; i--) {
+    const d = shiftDate(todayISO(), -i);
+    const log = drafts[d] || recentLogs?.[d] || (d === date && dayLog ? dayLog : null);
+    if (log) days[d] = daySummary({ ...log, date: d }, g);
+  }
+  return { name: displayName() || "Member", updatedAt: Date.now(), days };
+}
+
+let groupSyncTimer = null;
+function syncGroups() {
+  if (!store?.saveMember || !recentLogs || !(profile?.groups || []).length) return;
+  clearTimeout(groupSyncTimer);
+  groupSyncTimer = setTimeout(async () => {
+    const data = memberData();
+    for (const grp of profile.groups) await store.saveMember(grp.code, data).catch(() => {});
+  }, 1000);
+}
+
+function metOf(sm) {
+  return {
+    steps: sm.st >= sm.stg,
+    workout: sm.wo >= sm.wog,
+    sleep: sm.sl != null && sm.sl >= sm.slg,
+    food: sm.fd > 0,
+  };
+}
+const metCount = (sm) => Object.values(metOf(sm)).filter(Boolean).length;
+
+function statusFor(sm) {
+  if (!sm) return { text: "Not logged yet", cls: "badge--quiet" };
+  const n = metCount(sm);
+  if (n === 4) return { text: "Crushing it", cls: "badge--great" };
+  if (n === 3) return { text: "On track", cls: "badge--good" };
+  if (n === 2) return { text: "Getting there", cls: "badge--warm" };
+  return { text: "Needs a nudge", cls: "badge--quiet" };
+}
+
+function weekCount(m) {
+  let n = 0;
+  for (let i = 0; i < 7; i++) {
+    const sm = m.days?.[shiftDate(todayISO(), -i)];
+    if (sm && metCount(sm) >= 3) n++;
+  }
+  return n;
+}
+
+function openGroupView(code) {
+  closeGroupView();
+  openGroup = code;
+  groupInfo = (profile?.groups || []).find((g) => g.code === code) || null;
+  groupMembers = [];
+  groupLoaded = false;
+  el.groupMsg.textContent = "";
+  unwatchGroup.push(store.watchGroup(code, (g, meta) => {
+    if (g) groupInfo = { ...g, removed: groupInfo?.removed };
+    else if (!meta?.fromCache) groupInfo = { gone: true, name: groupInfo?.name };
+    render();
+  }, () => {}));
+  unwatchGroup.push(store.watchGroupMembers(code, (list) => {
+    groupMembers = list;
+    groupLoaded = true;
+    render();
+  }, () => {
+    // Not allowed to read members: they were removed from the group
+    groupLoaded = true;
+    groupInfo = { ...(groupInfo || {}), removed: true };
+    render();
+  }));
+  render();
+  window.scrollTo(0, 0);
+}
+
+function closeGroupView() {
+  unwatchGroup.forEach((u) => u && u());
+  unwatchGroup = [];
+  openGroup = null;
+  el.groupLeaveConfirm.hidden = true;
+  removeArmed = null;
+}
+
+function renderGroups() {
+  if (el.groupsPanel.hidden) return;
+  const groups = profile?.groups || [];
+  el.groupsListView.hidden = !!openGroup;
+  el.groupDetail.hidden = !openGroup;
+  el.linkPanel.hidden = el.linkPanel.hidden || !!openGroup; // focus on the group while it's open
+
+  if (!openGroup) {
+    el.groupList.replaceChildren();
+    for (const g of groups) {
+      const li = document.createElement("li");
+      li.className = "link-row";
+      const name = document.createElement("span");
+      name.className = "link-row__name";
+      name.textContent = g.name || "Group";
+      const open = document.createElement("button");
+      open.type = "button";
+      open.className = "btn btn--small";
+      open.textContent = "Open";
+      open.addEventListener("click", () => openGroupView(g.code));
+      li.append(name, open);
+      el.groupList.append(li);
+    }
+    return;
+  }
+
+  const isOwner = groupInfo?.owner && groupInfo.owner === store.uid;
+  el.groupTitle.textContent = groupInfo?.name || "Group";
+  el.groupInvite.textContent = openGroup;
+  const ended = groupInfo?.gone || groupInfo?.removed;
+  el.groupNote.hidden = !ended;
+  if (groupInfo?.gone) el.groupNote.textContent = "This group was deleted by its creator. You can remove it from your list.";
+  else if (groupInfo?.removed) el.groupNote.textContent = "You're no longer a member of this group. You can remove it from your list.";
+  el.groupLeave.textContent = ended ? "Remove from my list" : isOwner ? "Delete group" : "Leave group";
+  el.groupInvite.closest(".group-invite").hidden = !!ended;
+  el.groupLeave.hidden = !el.groupLeaveConfirm.hidden;
+  el.groupCount.textContent = groupLoaded ? `${groupMembers.length} member${groupMembers.length === 1 ? "" : "s"}` : "Loading…";
+
+  const today = todayISO();
+  const sorted = [...groupMembers].sort((a, b) => {
+    const ta = a.days?.[today] ? metCount(a.days[today]) : -1;
+    const tb = b.days?.[today] ? metCount(b.days[today]) : -1;
+    return tb - ta || weekCount(b) - weekCount(a) || (a.name || "").localeCompare(b.name || "");
+  });
+
+  el.groupMembers.replaceChildren();
+  sorted.forEach((m, i) => {
+    const sm = m.days?.[today] || null;
+    const me = m.id === store.uid;
+    const li = document.createElement("li");
+    li.className = "member";
+
+    const head = document.createElement("div");
+    head.className = "member__head";
+    const rank = document.createElement("span");
+    rank.className = "member__rank";
+    rank.textContent = String(i + 1);
+    const name = document.createElement("span");
+    name.className = "member__name";
+    name.textContent = (m.name || "Member") + (me ? " (you)" : "") + (m.id === groupInfo?.owner ? " · creator" : "");
+    const st = statusFor(sm);
+    const badge = document.createElement("span");
+    badge.className = "badge " + st.cls;
+    badge.textContent = st.text;
+    head.append(rank, name, badge);
+
+    const stats = document.createElement("dl");
+    stats.className = "member__stats";
+    const met = sm ? metOf(sm) : {};
+    const stat = (label, value, sub, ok) => {
+      const w = document.createElement("div");
+      w.className = "mstat" + (ok ? " is-met" : "");
+      const dt = document.createElement("dt"); dt.textContent = label;
+      const dd = document.createElement("dd"); dd.textContent = value;
+      if (sub) { const sml = document.createElement("small"); sml.textContent = sub; dd.append(sml); }
+      w.append(dt, dd);
+      stats.append(w);
+    };
+    stat("Steps", sm ? fmt(sm.st) : "—", sm ? `of ${fmt(sm.stg)}` : "", met.steps);
+    stat("Workout", sm ? `${fmt(sm.wo)} min` : "—", sm ? `of ${sm.wog} min` : "", met.workout);
+    stat("Sleep", sm && sm.sl != null ? formatHours(sm.sl) : "—", sm ? `of ${sm.slg} h` : "", met.sleep);
+    stat("Food", sm ? (sm.fd ? `${sm.fd} logged` : "None yet") : "—", sm && sm.kc ? `${fmt(sm.kc)} kcal` : "", met.food);
+
+    const week = document.createElement("div");
+    week.className = "member__week";
+    const dots = document.createElement("span");
+    dots.className = "dots";
+    dots.setAttribute("aria-hidden", "true");
+    for (let k = 6; k >= 0; k--) {
+      const d = shiftDate(today, -k);
+      const dsm = m.days?.[d];
+      const dot = document.createElement("span");
+      dot.className = "dot" + (dsm && metCount(dsm) >= 3 ? " is-on" : "") + (k === 0 ? " is-today" : "");
+      dot.title = dayTitle(d);
+      dots.append(dot);
+    }
+    const wtext = document.createElement("span");
+    wtext.textContent = `On track ${weekCount(m)} of the last 7 days`;
+    week.append(dots, wtext);
+
+    li.append(head, stats, week);
+
+    if (isOwner && !me) {
+      const rm = document.createElement("button");
+      rm.type = "button";
+      rm.className = "food-row__delete member__remove";
+      rm.textContent = removeArmed === m.id ? `Tap again to remove ${m.name || "this member"}` : "Remove from group";
+      rm.addEventListener("click", async () => {
+        if (removeArmed !== m.id) { removeArmed = m.id; render(); return; }
+        removeArmed = null;
+        try { await store.removeMember(openGroup, m.id); el.groupMsg.textContent = `${m.name || "Member"} was removed.`; }
+        catch { el.groupMsg.textContent = "Couldn't remove them. Try again."; }
+      });
+      li.append(rm);
+    }
+    el.groupMembers.append(li);
+  });
+}
+
+async function addGroupToList(code, name) {
+  const groups = [...(profile?.groups || []).filter((g) => g.code !== code), { code, name }];
+  profile = { ...(profile || {}), groups };
+  await store.saveGroups(groups);
+}
+
+async function removeGroupFromList(code) {
+  const groups = (profile?.groups || []).filter((g) => g.code !== code);
+  profile = { ...(profile || {}), groups };
+  await store.saveGroups(groups);
+}
+
+el.groupCreateForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = el.groupName.value.trim();
+  if (!name) { el.groupsMsg.textContent = "Give your group a name, like Fit Family."; el.groupName.focus(); return; }
+  if ((profile?.groups || []).length >= 10) { el.groupsMsg.textContent = "You can be in up to 10 groups. Leave one to create another."; return; }
+  el.groupsMsg.textContent = "Creating your group…";
+  const code = newShareCode();
+  try {
+    await store.createGroup(code, name);
+    await store.saveMember(code, memberData());
+    await addGroupToList(code, name);
+    el.groupName.value = "";
+    el.groupsMsg.textContent = "";
+    openGroupView(code);
+    el.groupMsg.textContent = "Group created. Copy the invite code below and share it with your people.";
+  } catch {
+    el.groupsMsg.textContent = "Couldn't create the group. Check your connection and try again.";
+  }
+});
+
+el.groupJoinForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const code = normalizeCode(el.groupCode.value);
+  if (!code) { el.groupsMsg.textContent = "Group codes have 12 letters and numbers, like K7QF-9XMA-2PDW."; return; }
+  if ((profile?.groups || []).some((g) => g.code === code)) { openGroupView(code); return; }
+  el.groupsMsg.textContent = "Looking up that group…";
+  try {
+    const info = await store.getGroup(code);
+    if (!info) { el.groupsMsg.textContent = "No group found for that code. Check it with the person who invited you."; return; }
+    await store.saveMember(code, memberData());
+    await addGroupToList(code, info.name || "Group");
+    el.groupCode.value = "";
+    el.groupsMsg.textContent = "";
+    openGroupView(code);
+    el.groupMsg.textContent = `You joined ${info.name || "the group"}. Your steps, workouts, sleep and food totals are now shared with its members.`;
+  } catch {
+    el.groupsMsg.textContent = "Couldn't join right now. Check your connection and try again.";
+  }
+});
+
+el.groupBack.addEventListener("click", () => { closeGroupView(); render(); });
+
+el.groupCopy.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(openGroup);
+    el.groupMsg.textContent = "Invite code copied.";
+  } catch {
+    const range = document.createRange();
+    range.selectNodeContents(el.groupInvite);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+    el.groupMsg.textContent = "Code selected. Use Copy from your device's menu.";
+  }
+});
+
+el.groupLeave.addEventListener("click", () => {
+  const isOwner = groupInfo?.owner === store.uid;
+  if (groupInfo?.gone || groupInfo?.removed) { leaveCurrentGroup(); return; }
+  el.groupLeaveText.textContent = isOwner
+    ? "Delete this group for everyone? All members will lose access to its insights."
+    : "Leave this group? Its members will no longer see your insights.";
+  el.groupLeaveYes.textContent = isOwner ? "Delete group" : "Leave group";
+  el.groupLeaveConfirm.hidden = false;
+  render();
+});
+el.groupLeaveNo.addEventListener("click", () => { el.groupLeaveConfirm.hidden = true; render(); });
+el.groupLeaveYes.addEventListener("click", leaveCurrentGroup);
+
+async function leaveCurrentGroup() {
+  const code = openGroup;
+  const isOwner = groupInfo?.owner === store.uid;
+  const gone = groupInfo?.gone || groupInfo?.removed;
+  el.groupLeaveYes.disabled = true;
+  try {
+    if (!gone) {
+      if (isOwner) await store.deleteGroup(code);
+      else await store.leaveGroup(code);
+    }
+    await removeGroupFromList(code);
+    closeGroupView();
+    el.groupsMsg.textContent = gone ? "Removed from your list." : isOwner ? "Group deleted." : "You left the group.";
+  } catch {
+    el.groupMsg.textContent = "Couldn't do that right now. Check your connection and try again.";
+  } finally {
+    el.groupLeaveYes.disabled = false;
+    render();
+  }
+}
+
 // ---------- Email verification ----------
 const appUrl = () => location.origin + location.pathname;
 let currentUser = null;
@@ -1722,6 +2087,11 @@ el.deleteForm.addEventListener("submit", async (e) => {
     await reauthenticateWithCredential(currentUser, EmailAuthProvider.credential(currentUser.email, password));
     for (const d of Object.keys(timers)) clearTimeout(timers[d]);
     if (sharing?.code) await store.removeCopies(sharing.code);
+    for (const g of profile?.groups || []) {
+      const info = await store.getGroup(g.code).catch(() => null);
+      if (info?.owner === store.uid) await store.deleteGroup(g.code).catch(() => {});
+      else await store.leaveGroup(g.code).catch(() => {});
+    }
     await store.deleteEverything();
     await deleteUser(currentUser);
     try { sessionStorage.setItem("health-log-deleted", "1"); } catch {}

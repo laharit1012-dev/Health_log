@@ -39,6 +39,14 @@ Setup (once):
 1. Firebase console → Project settings → **Cloud Messaging** → Web Push certificates → **Generate key pair**. Put the key in `vapidKey` in `firebase-config.js`.
 2. Firebase console → Project settings → **Service accounts** → **Generate new private key**. In GitHub → Settings → Secrets and variables → Actions, add it as a secret named `FIREBASE_SERVICE_ACCOUNT` (paste the whole file's contents). Never commit this file.
 
+## Groups
+
+On the **Family** page, under **Groups**:
+- **Create a group** (for example "Fit Family") and share its invite code, or **Join a group** with a code. You can be in up to 10 groups.
+- The group page ranks members by today's progress, with a status (**Crushing it**, **On track**, **Getting there**, **Needs a nudge**), today's steps, workout minutes, sleep and food (items logged and calories), and a 7-day strip of days on track (3 or more of the 4 goals met).
+- Shared with the group: steps, workout minutes, sleep hours, number of food items and calories, and goals, for the last 7 days. Never what was eaten, notes, or the cycle tracker.
+- The creator can remove members or delete the group; anyone can leave.
+
 ## Install it like an app
 
 Open the link, then:

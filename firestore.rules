@@ -31,5 +31,30 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/shares/$(code)).data.owner == request.auth.uid;
       }
     }
+
+    // Groups: anyone signed in can open a group if they know its code (to join),
+    // but nobody can list groups. Only members can see the members' insights.
+    match /groups/{code} {
+      allow get: if request.auth != null;
+      allow list: if false;
+      allow create: if request.auth != null
+                    && request.resource.data.owner == request.auth.uid;
+      allow update: if request.auth != null
+                    && resource.data.owner == request.auth.uid
+                    && request.resource.data.owner == request.auth.uid;
+      allow delete: if request.auth != null
+                    && resource.data.owner == request.auth.uid;
+
+      match /members/{memberId} {
+        allow read: if request.auth != null
+          && exists(/databases/$(database)/documents/groups/$(code)/members/$(request.auth.uid));
+        allow create, update: if request.auth != null
+          && request.auth.uid == memberId
+          && exists(/databases/$(database)/documents/groups/$(code));
+        allow delete: if request.auth != null
+          && (request.auth.uid == memberId
+              || get(/databases/$(database)/documents/groups/$(code)).data.owner == request.auth.uid);
+      }
+    }
   }
 }
