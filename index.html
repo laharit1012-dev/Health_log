@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=30">
+  <link rel="stylesheet" href="styles.css?v=31">
 </head>
 <body>
   <!-- Background wallpaper: full on Today, dimmed on the other pages -->
@@ -48,9 +48,10 @@
   <header class="site-header">
     <div class="site-header__inner">
       <span class="brand">Health Log</span>
-      <span id="who" class="who" hidden>
+      <a id="who" class="who" href="#account" hidden aria-label="Account">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="3.5"/><path d="M4.5 20c.8-3.6 3.8-6 7.5-6s6.7 2.4 7.5 6"/></svg>
         <span id="who-name" class="who__name"></span>
-      </span>
+      </a>
 
       <button id="theme-toggle" class="theme-toggle" type="button"
               role="switch" aria-checked="false" aria-label="Dark mode">
@@ -238,6 +239,19 @@
           <input id="steps" class="big-input" type="number" inputmode="numeric" min="0" step="1" placeholder="0">
           <div class="meter" aria-hidden="true"><span id="steps-bar"></span></div>
           <p class="hint" id="steps-hint"></p>
+          <details class="sync-help">
+            <summary>Fill in steps from Apple Health (iPhone)</summary>
+            <ol>
+              <li>Open the <strong>Shortcuts</strong> app and tap <strong>+</strong>. Name it <em>Sync steps</em>.</li>
+              <li>Add <strong>Find Health Samples</strong>: Type <em>Steps</em>, Start Date <em>is today</em>.</li>
+              <li>Add <strong>Calculate Statistics</strong>: <em>Sum</em> of the Health Samples.</li>
+              <li>Add <strong>Round Number</strong> (to ones).</li>
+              <li>Add <strong>URL</strong>: <span class="mono">https://laharit1012-dev.github.io/Health_log/?steps=</span> and then insert the <em>Rounded Number</em> after the = sign.</li>
+              <li>Add <strong>Open URLs</strong>. Tap ▶ once and allow Health access.</li>
+              <li>To make it automatic: <strong>Automation</strong> tab → <strong>+</strong> → <em>Time of Day</em> (for example 9 PM, daily) → <em>Run Immediately</em> → choose <em>Sync steps</em>.</li>
+            </ol>
+            <p>It opens Health Log in Safari, so stay signed in there too. If you wear an Apple Watch, add the filter <em>Source is</em> your iPhone in step 2 so steps aren't counted twice.</p>
+          </details>
         </div>
 
         <!-- Water -->
@@ -288,6 +302,8 @@
             <option>Swim</option>
             <option>Sports</option>
             <option>Dance</option>
+            <option>Cardio</option>
+            <option>Stretching</option>
             <option>Other</option>
             <option>Rest day</option>
           </select>
@@ -343,6 +359,29 @@
         <p><strong>Daily title</strong>: 1+ points Warming up · 50+ Go-getter · 75+ Achiever · 100 Superstar.</p>
         <p><strong>Levels</strong>: a day with 50+ points is a consistent day. Get 5 consistent days in a week (Monday to Sunday) to move up a level. Levels never go down.</p>
       </details>
+    </section>
+
+    <!-- Workouts page: plans and videos -->
+    <section id="workouts-panel" class="stack workouts" aria-labelledby="workouts-title" hidden>
+      <div class="section-head">
+        <h2 id="workouts-title">Workouts</h2>
+        <span class="hint">Pick a plan, press play, log it</span>
+      </div>
+
+      <div id="plan-today" class="link-panel plan-today" hidden></div>
+
+      <div class="stack stack--tight">
+        <h3>Weekly plans</h3>
+        <div id="plan-list" class="plan-list"></div>
+      </div>
+
+      <div class="stack stack--tight">
+        <h3>Video library</h3>
+        <div id="video-filters" class="chips" role="group" aria-label="Filter videos"></div>
+        <div id="video-list" class="video-list"></div>
+        <p class="hint">Videos play from YouTube. If one doesn't load, use <em>Watch on YouTube</em>. Go at your own pace and stop if anything hurts.</p>
+      </div>
+      <p id="workout-page-msg" class="view-note" hidden></p>
     </section>
 
     <!-- Cycle page: only for women (or someone who shared theirs with you) -->
@@ -569,6 +608,10 @@
       <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c3 4 6 7.2 6 10.6A6 6 0 0 1 6 13.6C6 10.2 9 7 12 3z"/><path d="M9.5 14.5a2.6 2.6 0 0 0 2.5 2.4"/></svg>
       <span>Cycle</span>
     </a>
+    <a href="#workouts" data-route="workouts">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/></svg>
+      <span>Workouts</span>
+    </a>
     <a href="#family" data-route="family">
       <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="7" r="3"/><circle cx="17" cy="8" r="2.5"/><path d="M2.5 20c0-3.6 2.5-6 5.5-6s5.5 2.4 5.5 6M14 20c0-2.6 1.3-4.6 3-4.6s3.5 2 3.5 4.6"/></svg>
       <span>Family</span>
@@ -577,20 +620,17 @@
       <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg>
       <span>Reminders</span>
     </a>
-    <a href="#account" data-route="account">
-      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="3.5"/><path d="M4.5 20c.8-3.6 3.8-6 7.5-6s6.7 2.4 7.5 6"/></svg>
-      <span>Account</span>
-    </a>
+
   </nav>
 
   <footer class="site-footer">
-    <p>Health Log · version <span id="app-version">30</span> · <a href="privacy.html">Privacy policy</a></p>
+    <p>Health Log · version <span id="app-version">31</span> · <a href="privacy.html">Privacy policy</a></p>
   </footer>
 
   <!-- Goal celebrations -->
   <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <script type="module" src="app.js?v=30"></script>
+  <script type="module" src="app.js?v=31"></script>
 </body>
 </html>

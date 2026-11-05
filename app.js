@@ -15,8 +15,9 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=30";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=30";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=31";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=31";
+import { KINDS, VIDEOS, PLANS } from "./workouts.js?v=31";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -154,7 +155,7 @@ function firestoreStore(db, uid) {
     kind: "account",
     canLink: true,
     watchProfile: (cb, onError) => watch(userRef, (d, m) => cb(d
-      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null, groups: Array.isArray(d.groups) ? d.groups : [], xpDays: d.xpDays || {}, badges: d.badges || {} }
+      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null, groups: Array.isArray(d.groups) ? d.groups : [], xpDays: d.xpDays || {}, badges: d.badges || {}, plan: d.plan || null }
       : null, m), onError),
     watchSharing: (cb, onError) => watch(userRef, (d, m) => cb(d?.shareCode ? { code: d.shareCode, cycle: !!d.shareCycle } : null, m), onError),
     watchLinks: (cb, onError) => watch(userRef, (d, m) => cb({ people: Array.isArray(d?.links) ? d.links : [] }, m), onError),
@@ -413,6 +414,8 @@ const el = {
   levelCard: $("level-card"), levelNum: $("level-num"), levelName: $("level-name"), levelBar: $("level-bar"),
   levelHint: $("level-hint"), levelToday: $("level-today"), todayRing: $("today-ring"),
   badgesPanel: $("badges-panel"), badgesCount: $("badges-count"), badgeGrid: $("badge-grid"),
+  workoutsPanel: $("workouts-panel"), planToday: $("plan-today"), planList: $("plan-list"),
+  videoFilters: $("video-filters"), videoList: $("video-list"), workoutPageMsg: $("workout-page-msg"),
   tabbar: $("tabbar"), tabPeriod: $("tab-period"), periodPanel: $("period-panel"),
   installTip: $("install-tip"), installText: $("install-text"), installBtn: $("install-btn"), installClose: $("install-close"),
   linkForm: $("link-form"), linkCode: $("link-code"), linkMsg: $("link-msg"), linkList: $("link-list"),
@@ -434,7 +437,7 @@ function setValue(input, value) {
 const caloriesOf = (log) => log.foods.reduce((sum, f) => sum + (Number(f.calories) || 0), 0);
 
 // ---------- Pages ----------
-const ROUTES = ["today", "cycle", "family", "reminders", "account"];
+const ROUTES = ["today", "cycle", "workouts", "family", "reminders", "account"];
 const routeFromHash = () => {
   let r = location.hash.replace("#", "");
   if (r === "period") r = "cycle"; // older links
@@ -450,6 +453,7 @@ function goTo(r) {
 window.addEventListener("hashchange", () => {
   route = routeFromHash();
   if (route !== "family" && openGroup) closeGroupView();
+  if (route !== "workouts") playing = null;
   render();
   window.scrollTo(0, 0);
 });
@@ -465,7 +469,8 @@ function render() {
   // Who is signed in
   const name = displayName();
   el.who.hidden = !me;
-  if (me) el.whoName.textContent = name || me.email;
+  if (me) el.whoName.textContent = name || "Account";
+  if (route === "account") el.who.setAttribute("aria-current", "page"); else el.who.removeAttribute("aria-current");
 
   el.signin.hidden = !signedOut || !el.verifyPanel.hidden;
   const inApp = !signedOut && !!store;
@@ -490,6 +495,7 @@ function render() {
   el.badgesPanel.hidden = !on("today") || !!viewing;
   el.panel.hidden = !on("today");
   el.periodPanel.hidden = !on("cycle");
+  el.workoutsPanel.hidden = !on("workouts");
   el.linkPanel.hidden = !on("family") || !store?.canLink || !!blocked;
   el.groupsPanel.hidden = !on("family") || !store?.canLink || !!blocked;
   el.accountPanel.hidden = !on("account");
@@ -514,6 +520,7 @@ function render() {
   renderCycle();
   renderGroups();
   renderProgress();
+  renderWorkoutsPage();
   renderPanel();
   renderLinkPanel();
   setStatus();
@@ -1429,6 +1436,7 @@ function watchDay() {
   const onDay = (log, meta) => {
     dayLog = log;
     dayReady = true;
+    setTimeout(applyPending, 0);
     if (!meta?.fromCache) {
       loaded = true;
       clearTimeout(loadTimer);
@@ -1957,6 +1965,197 @@ function renderProgress() {
     li.append(medal, name, how);
     el.badgeGrid.append(li);
   }
+}
+
+// ---------- Steps from Apple Health (iPhone Shortcut) and workouts from videos ----------
+// The Shortcut opens …/Health_log/?steps=1234. We keep the number until you're signed in
+// and today's log has loaded, then fill it in.
+const STEPS_KEY = "health-log-steps";
+(function readStepsFromLink() {
+  const params = new URLSearchParams(location.search);
+  if (!params.has("steps")) return;
+  const n = Math.round(Number(params.get("steps")));
+  if (Number.isFinite(n) && n >= 0 && n <= 200000) {
+    try { sessionStorage.setItem(STEPS_KEY, JSON.stringify({ steps: n, date: todayISO() })); } catch {}
+  }
+  history.replaceState(null, "", location.pathname + location.hash);
+})();
+
+let pendingWorkout = null;   // { kind, minutes, title } waiting for today's log
+
+function applyPending() {
+  if (!store || readOnly() || viewing || date !== todayISO()) return;
+  let synced = null;
+  try { synced = JSON.parse(sessionStorage.getItem(STEPS_KEY) || "null"); sessionStorage.removeItem(STEPS_KEY); } catch {}
+  if (synced && synced.date === todayISO()) {
+    edit((l) => { l.steps = synced.steps; });
+    showToast(`Steps updated from Apple Health: ${fmt(synced.steps)}`);
+  }
+  if (pendingWorkout) {
+    const w = pendingWorkout;
+    pendingWorkout = null;
+    edit((l) => {
+      l.workouts.push({
+        id: "w" + Date.now() + Math.random().toString(36).slice(2, 6),
+        type: KINDS[w.kind].type,
+        minutes: w.minutes,
+        notes: w.title.slice(0, 200),
+      });
+    });
+    showToast(`Logged: ${KINDS[w.kind].label}, ${w.minutes} min. Nice work!`);
+  }
+}
+
+function logWorkoutToday(video) {
+  if (blocked || !store) return;
+  pendingWorkout = { kind: video.kind, minutes: video.minutes, title: video.title };
+  if (viewing) viewPerson(null);
+  if (date !== todayISO()) setDate(todayISO());
+  applyPending();
+}
+
+// ---------- Workouts page ----------
+let videoFilter = "all";
+let playing = null; // video id playing inline
+
+const dayIndex = () => (fromISO(todayISO()).getDay() + 6) % 7; // Monday = 0
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function videoCard(v) {
+  const card = document.createElement("article");
+  card.className = "video";
+  const frame = document.createElement("div");
+  frame.className = "video__frame";
+  if (playing === v.id) {
+    const iframe = document.createElement("iframe");
+    iframe.src = `https://www.youtube-nocookie.com/embed/${v.id}?autoplay=1&playsinline=1&rel=0`;
+    iframe.title = v.title;
+    iframe.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+    iframe.allowFullscreen = true;
+    frame.append(iframe);
+  } else {
+    const img = document.createElement("img");
+    img.src = `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`;
+    img.alt = "";
+    img.loading = "lazy";
+    const play = document.createElement("button");
+    play.type = "button";
+    play.className = "video__play";
+    play.setAttribute("aria-label", `Play ${v.title}`);
+    play.innerHTML = "<span>▶</span>";
+    play.addEventListener("click", () => { playing = v.id; render(); });
+    frame.append(img, play);
+  }
+  const title = document.createElement("div");
+  title.className = "video__title";
+  title.textContent = v.title;
+  const meta = document.createElement("div");
+  meta.className = "video__meta";
+  meta.textContent = [KINDS[v.kind].label, `about ${v.minutes} min`, v.by].filter(Boolean).join(" · ");
+  const actions = document.createElement("div");
+  actions.className = "video__actions";
+  const log = document.createElement("button");
+  log.type = "button";
+  log.className = "btn btn--small";
+  log.textContent = `Log it (${v.minutes} min)`;
+  log.addEventListener("click", () => logWorkoutToday(v));
+  const yt = document.createElement("a");
+  yt.href = `https://www.youtube.com/watch?v=${v.id}`;
+  yt.target = "_blank";
+  yt.rel = "noopener";
+  yt.textContent = "Watch on YouTube";
+  actions.append(log, yt);
+  card.append(frame, title, meta, actions);
+  return card;
+}
+
+function weekStrip(plan) {
+  const week = document.createElement("div");
+  week.className = "week";
+  plan.week.forEach((k, i) => {
+    const cell = document.createElement("span");
+    if (i === dayIndex()) cell.className = "is-today";
+    const d = document.createElement("b");
+    d.textContent = WEEKDAYS[i];
+    cell.append(d, document.createTextNode(KINDS[k].short || KINDS[k].label));
+    week.append(cell);
+  });
+  return week;
+}
+
+function renderWorkoutsPage() {
+  if (el.workoutsPanel.hidden) return;
+  const current = PLANS.find((p) => p.id === profile?.plan) || null;
+
+  // Today's workout from your plan
+  el.planToday.hidden = false;
+  el.planToday.replaceChildren();
+  const h = document.createElement("h3");
+  if (!current) {
+    h.textContent = "Today's workout";
+    const p = document.createElement("p");
+    p.className = "hint";
+    p.textContent = "Choose a weekly plan below and you'll get a workout here every day.";
+    el.planToday.append(h, p);
+  } else {
+    const kind = current.week[dayIndex()];
+    h.textContent = kind === "rest" ? "Today: rest day" : `Today: ${KINDS[kind].label}`;
+    const sub = document.createElement("p");
+    sub.className = "hint";
+    sub.textContent = kind === "rest"
+      ? `${current.name} plan. Rest and recover. A gentle walk or stretch is a bonus.`
+      : `${current.name} plan. Press play, then log it to earn points.`;
+    el.planToday.append(h, sub, weekStrip(current));
+    if (kind !== "rest") {
+      const options = VIDEOS.filter((v) => v.kind === kind);
+      const weekNo = Math.floor(fromISO(todayISO()).getTime() / (7 * 86400000));
+      el.planToday.append(videoCard(options[(weekNo + dayIndex()) % options.length]));
+    }
+  }
+
+  // Plans
+  el.planList.replaceChildren();
+  for (const plan of PLANS) {
+    const card = document.createElement("article");
+    card.className = "plan" + (current?.id === plan.id ? " is-current" : "");
+    const name = document.createElement("h4");
+    name.style.margin = "0";
+    name.textContent = plan.name;
+    const meta = document.createElement("div");
+    meta.className = "plan__meta";
+    meta.textContent = `${plan.level} · ${plan.perDay}`;
+    const about = document.createElement("p");
+    about.textContent = plan.about;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = current?.id === plan.id ? "btn btn--ghost btn--small" : "btn btn--small";
+    btn.textContent = current?.id === plan.id ? "Your plan · Stop" : "Start this plan";
+    btn.disabled = !!blocked;
+    btn.addEventListener("click", async () => {
+      const next = current?.id === plan.id ? null : plan.id;
+      profile = { ...(profile || {}), plan: next };
+      render();
+      showToast(next ? `${plan.name} plan started. Today's workout is at the top.` : "Plan stopped.");
+      if (next) window.scrollTo({ top: 0, behavior: "smooth" });
+      try { await store.saveProfile({ plan: next }); } catch (err) { handleWriteError(err); }
+    });
+    card.append(name, meta, about, weekStrip(plan), btn);
+    el.planList.append(card);
+  }
+
+  // Video library
+  el.videoFilters.replaceChildren();
+  for (const [k, label] of [["all", "All"], ...Object.entries(KINDS).filter(([k]) => k !== "rest").map(([k, v]) => [k, v.label])]) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip";
+    chip.textContent = label;
+    chip.setAttribute("aria-pressed", String(videoFilter === k));
+    chip.addEventListener("click", () => { videoFilter = k; render(); });
+    el.videoFilters.append(chip);
+  }
+  el.videoList.replaceChildren();
+  for (const v of VIDEOS.filter((x) => videoFilter === "all" || x.kind === videoFilter)) el.videoList.append(videoCard(v));
 }
 
 // ---------- Groups ----------

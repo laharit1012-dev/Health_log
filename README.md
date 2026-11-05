@@ -11,7 +11,8 @@ The app has these pages, switched with the tab bar at the bottom:
 - **Cycle** (women only, or when viewing someone who shared theirs): cycle day, expected next period, and logged start dates.
 - **Family:** share codes and linked family members.
 - **Reminders:** water and workout reminders.
-- **Account:** sign out, privacy policy and Delete my account.
+- **Account** (the person button at the top): sign out, privacy policy and Delete my account.
+- **Workouts:** weekly plans and workout videos.
 
 Each day you can log:
 - **Steps**: progress toward 10,000
@@ -52,6 +53,14 @@ Setup (once):
 The Cycle page shows the current phase (Period, Follicular, Ovulation, Luteal) with a short note on how energy and mood often feel. Phases are estimated from logged period start dates and cycle length (period about 5 days, ovulation about 14 days before the next period).
 
 When someone views a person who shares their cycle tracker, they're asked once: **Get cycle updates?** If yes, the reminders job sends them a notification when that person's phase changes (between 9 AM and 9 PM their time). They can switch updates on or off any time under **Reminders → Cycle updates**.
+
+## Workouts
+
+The **Workouts** tab has four weekly plans (Walk More, Strong at Home, Yoga & Flexibility, Cardio Boost) and a library of beginner-friendly YouTube videos (walking, strength, yoga, cardio, stretching), listed in `workouts.js`. Start a plan to get today's workout with a video at the top. **Log it** adds the workout to Today, which earns points.
+
+## Steps from Apple Health (iPhone)
+
+An iPhone Shortcut can fill in today's steps: it reads steps from Apple Health and opens `https://laharit1012-dev.github.io/Health_log/?steps=<number>`. The app saves that number as today's steps once you're signed in (step-by-step setup is in the app under Steps → *Fill in steps from Apple Health*). Android doesn't have an equivalent built in, so steps are typed there.
 
 ## Groups
 
