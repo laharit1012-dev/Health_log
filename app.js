@@ -15,14 +15,15 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=36";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=36";
-import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=36";
-import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=36";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=37";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=37";
+import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=37";
+import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=37";
+import { SHOP } from "./shop.js?v=37";
 
 // ---------- App version and updates ----------
 // Bump APP_VERSION and version.json together when publishing an update.
-const APP_VERSION = 36;
+const APP_VERSION = 37;
 
 // Open the newest version: a unique address makes the phone fetch fresh files
 function reloadFresh() {
@@ -261,6 +262,7 @@ function firestoreStore(db, uid) {
     async deleteEverything() {
       const snap = await getDocs(collection(db, "users", uid, "days"));
       for (const d of snap.docs) await deleteDoc(d.ref);
+      await deleteDoc(doc(db, "directory", uid)).catch(() => {});
       await deleteDoc(userRef);
     },
     async removeCopies(code) {
@@ -280,6 +282,25 @@ function firestoreStore(db, uid) {
       }
     },
     watchSharedProfile: (code, cb, onError) => watch(shareRef(code), cb, onError),
+
+    // Paid access: access/<uid> { challenge | null, all, start, end, endAt } is written only by admins
+    watchAccess: (cb, onError) => watch(doc(db, "access", uid), cb, onError),
+    // directory/<uid> { email, name } lets an admin find someone by email
+    saveDirectory: (email, name) => setDoc(doc(db, "directory", uid), { email: (email || "").toLowerCase(), name: name || "", updatedAt: Date.now() }),
+    deleteDirectory: () => deleteDoc(doc(db, "directory", uid)),
+    async isAdmin() {
+      try { return (await getDoc(doc(db, "admins", uid))).exists(); } catch { return false; }
+    },
+    async findByEmail(email) {
+      const snap = await getDocs(query(collection(db, "directory"), where("email", "==", email.toLowerCase())));
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+    grantAccess: (personUid, data) => setDoc(doc(db, "access", personUid), data),
+    removeAccess: (personUid) => deleteDoc(doc(db, "access", personUid)),
+    async listAccess() {
+      const snap = await getDocs(collection(db, "access"));
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
     watchSharedDay: (code, date, cb, onError) => watch(shareDayRef(code, date), cb, onError),
   };
 }
@@ -318,6 +339,28 @@ let recent = null;         // { date: steps } for the last 60 days, for the stre
 let recentLogs = null;     // { date: log } for the last 60 days, for group insights
 let viewGone = false;      // the linked person stopped sharing
 let pendingShare = false;  // create a code as soon as a name is saved
+
+// ---------- Paid access ----------
+// access/<uid> is given by an admin after someone pays: one challenge for its dates,
+// or "all access" (family and friends). Without it, only the Shop and Account open.
+let accessDoc = null;      // { challenge, all, start, end, endAt }
+let accessKnown = false;
+let accessOpen = false;    // the database rules for access aren't set up yet: everything stays open
+let isAdmin = false;
+let adminChecked = false;
+
+function accessNow() {
+  if (accessOpen) return "open";
+  if (!accessKnown) return "checking";
+  if (!accessDoc) return "none";
+  if (accessDoc.endAt == null) return accessDoc.all ? "active" : "expired";
+  return Date.now() <= accessDoc.endAt ? "active" : "expired";
+}
+const locked = () => ["none", "expired"].includes(accessNow());
+// Family and friends (and everyone, until access is set up) join challenges for free
+const freeJoin = () => ["open", "checking"].includes(accessNow()) || (accessNow() === "active" && !!accessDoc?.all);
+const passChallenge = () => (accessDoc && !accessDoc.all ? CHALLENGES.find((c) => c.id === accessDoc.challenge) || null : null);
+const LOCKED_ROUTES_OK = ["challenges", "account", "admin"];
 
 const logNow = () => (viewing ? normalize(dayLog, date) : drafts[date] || normalize(dayLog, date));
 const displayName = () => profile?.name || "";
@@ -454,6 +497,11 @@ const el = {
   equipChoice: $("equip-choice"), folderBack: $("folder-back"), folderGrid: $("folder-grid"), videoMore: $("video-more"),
   libraryTitle: $("library-title"), libraryCount: $("library-count"),
   challengesPanel: $("challenges-panel"), challengeList: $("challenge-list"), challengeCard: $("challenge-card"),
+  accessNote: $("access-note"), shopHint: document.querySelector("#challenges-panel .section-head .hint"),
+  adminPanel: $("admin-panel"), adminLink: $("admin-link"), remLink: document.querySelector('#account-panel a[href="#reminders"]'),
+  adminFind: $("admin-find"), adminEmail: $("admin-email"), adminPerson: $("admin-person"), adminPersonName: $("admin-person-name"),
+  adminPass: $("admin-pass"), adminStart: $("admin-start"), adminEnd: $("admin-end"), adminGrant: $("admin-grant"),
+  adminMsg: $("admin-msg"), adminList: $("admin-list"),
   groupChallenges: $("group-challenges"),
   tabbar: $("tabbar"), tabPeriod: $("tab-period"), periodPanel: $("period-panel"),
   installTip: $("install-tip"), installText: $("install-text"), installBtn: $("install-btn"), installClose: $("install-close"),
@@ -476,7 +524,7 @@ function setValue(input, value) {
 const caloriesOf = (log) => log.foods.reduce((sum, f) => sum + (Number(f.calories) || 0), 0);
 
 // ---------- Pages ----------
-const ROUTES = ["today", "cycle", "workouts", "family", "reminders", "account", "challenges"];
+const ROUTES = ["today", "cycle", "workouts", "family", "reminders", "account", "challenges", "admin"];
 const routeFromHash = () => {
   let r = location.hash.replace("#", "");
   if (r === "period") r = "cycle"; // older links
@@ -519,7 +567,21 @@ function render() {
     route = "today";
     history.replaceState(null, "", "#today");
   }
-  el.tabPeriod.hidden = !periodAvailable;
+  const isLocked = inApp && locked();
+  if (isLocked && !LOCKED_ROUTES_OK.includes(route)) {
+    route = "challenges";
+    history.replaceState(null, "", "#challenges");
+  }
+  if (inApp && route === "admin" && adminChecked && !isAdmin) {
+    route = "account";
+    history.replaceState(null, "", "#account");
+  }
+  for (const a of el.tabbar.querySelectorAll("a")) {
+    if (a !== el.tabPeriod) a.hidden = isLocked && a.dataset.route !== "challenges";
+  }
+  el.tabPeriod.hidden = !periodAvailable || isLocked;
+  el.adminLink.hidden = !isAdmin;
+  el.remLink.hidden = isLocked;
   const on = (r) => inApp && route === r;
   el.tabbar.hidden = !inApp;
   document.body.dataset.route = inApp ? route : "signin";
@@ -539,6 +601,7 @@ function render() {
   el.linkPanel.hidden = !on("family") || !store?.canLink || !!blocked;
   el.groupsPanel.hidden = !on("family") || !store?.canLink || !!blocked;
   el.accountPanel.hidden = !on("account");
+  el.adminPanel.hidden = !on("admin") || !isAdmin;
   el.remPanel.hidden = !on("reminders") || !!blocked;
   if (me) el.accountEmail.textContent = me.email;
   el.people.hidden = !(on("today") || on("cycle")) || links.length === 0;
@@ -562,6 +625,7 @@ function render() {
   renderProgress();
   renderWorkoutsPage();
   renderChallenges();
+  renderAdmin();
   renderPanel();
   renderLinkPanel();
   setStatus();
@@ -1503,7 +1567,27 @@ function watchDay() {
 
 function start(s) {
   store = s;
-  store.watchProfile((p) => { profile = p; render(); initProgress(); }, () => {});
+  let listed = false;
+  store.watchProfile((p) => {
+    profile = p;
+    render();
+    initProgress();
+    // Keep the admin's search list current (email + name only)
+    if (store.saveDirectory && me?.email && (!listed || p?.name !== listed)) {
+      listed = p?.name || "";
+      store.saveDirectory(me.email, p?.name).catch(() => {});
+    }
+  }, () => {});
+  if (store.watchAccess) {
+    store.watchAccess((d) => { accessDoc = d; accessKnown = true; accessOpen = false; render(); }, (err) => {
+      // Rules not updated yet (or another problem): never lock people out because of it
+      accessKnown = true;
+      accessOpen = true;
+      if (err?.code !== "permission-denied") console.warn("Access check failed", err);
+      render();
+    });
+    store.isAdmin().then((v) => { isAdmin = v; adminChecked = true; render(); });
+  }
   if (store.canLink) {
     store.watchSharing((d) => { sharing = d?.code ? d : null; render(); }, () => {});
     store.watchLinks((d) => {
@@ -2384,7 +2468,15 @@ function challengeDayOK(rule, d) {
   }
 }
 
-const myChallenge = (id) => (profile?.challenges || []).find((c) => c.id === id) || null;
+// Your challenge: with a paid pass it's the challenge you paid for, from the day access began
+// (or from a later restart); with free access it's whichever you joined.
+function myChallenge(id) {
+  const saved = (profile?.challenges || []).find((c) => c.id === id) || null;
+  if (freeJoin()) return saved;
+  if (passChallenge()?.id !== id) return null;
+  const start = accessDoc.start || todayISO();
+  return { id, joined: saved && saved.joined > start ? saved.joined : start };
+}
 
 function challengeStatus(c) {
   const today = todayISO();
@@ -2413,6 +2505,7 @@ function challengeStatus(c) {
 
 async function setChallenge(id, join) {
   if (blocked || !store) return;
+  if (!freeJoin() && passChallenge()?.id !== id) return; // paid challenges unlock through the Shop
   const list = (profile?.challenges || []).filter((c) => c.id !== id);
   if (join) list.push({ id, joined: todayISO() });
   profile = { ...(profile || {}), challenges: list };
@@ -2466,7 +2559,7 @@ function renderChallenges() {
       t.textContent = active.length === 1 ? "Your challenge" : "Your challenges";
       const all = document.createElement("a");
       all.href = "#challenges";
-      all.textContent = "All challenges ›";
+      all.textContent = "Shop ›";
       head.append(t, all);
       el.challengeCard.append(head);
       for (const c of active) {
@@ -2487,18 +2580,26 @@ function renderChallenges() {
     }
   }
 
-  // Challenges page
+  // Shop page
   if (el.challengesPanel.hidden) return;
+  const free = freeJoin();
+  const pass = passChallenge();
+  const state = accessNow();
+  el.shopHint.textContent = free ? "All challenges included" : "One challenge per pass";
+  renderAccessNote(state, pass);
+
   el.challengeList.replaceChildren();
   const order = [...CHALLENGES].sort((a, b) => {
     const sa = challengeStatus(a), sb = challengeStatus(b);
-    const rank = (s) => (s.ended ? 2 : s.upcoming ? 1 : 0);
-    return rank(sa) - rank(sb);
+    const rank = (c, s) => (pass?.id === c.id && state === "active" ? -1 : s.ended ? 2 : s.upcoming ? 1 : 0);
+    return rank(a, sa) - rank(b, sb);
   });
   for (const c of order) {
     const st = challengeStatus(c);
+    const mineNow = !free && state === "active" && pass?.id === c.id;
+    const isLockedCard = !free && !mineNow;
     const card = document.createElement("article");
-    card.className = "challenge" + (st.joined ? " is-joined" : "");
+    card.className = "challenge" + (st.joined ? " is-joined" : "") + (isLockedCard ? " is-locked" : "");
     const top = document.createElement("div");
     top.className = "challenge__top";
     const emoji = document.createElement("span"); emoji.className = "challenge__emoji"; emoji.textContent = c.emoji; emoji.setAttribute("aria-hidden", "true");
@@ -2509,6 +2610,47 @@ function renderChallenges() {
     top.append(emoji, names);
     const about = document.createElement("p"); about.textContent = c.about;
     const rule = document.createElement("p"); rule.textContent = `A day counts when you reach: ${RULE_TEXT[c.rule]}.`;
+    card.append(top, about, rule);
+
+    if (isLockedCard) {
+      // Locked: price and a way to pay
+      const item = SHOP.items[c.id] || {};
+      const tag = document.createElement("div");
+      tag.className = "lock-tag";
+      const row = document.createElement("div"); row.className = "row";
+      if (st.ended) {
+        tag.textContent = "Ended · watch for the next one";
+      } else {
+        tag.textContent = "🔒 Locked";
+        const price = document.createElement("span"); price.className = "price";
+        price.textContent = item.price != null ? `${SHOP.currency}${item.price}` : "";
+        row.append(price);
+        if (item.payLink) {
+          const pay = document.createElement("a");
+          pay.className = "btn btn--small";
+          pay.href = item.payLink;
+          pay.target = "_blank";
+          pay.rel = "noopener";
+          pay.textContent = "Pay & join";
+          row.append(pay);
+        } else {
+          const soon = document.createElement("button");
+          soon.type = "button"; soon.className = "btn btn--small"; soon.disabled = true;
+          soon.textContent = "Payment link coming soon";
+          row.append(soon);
+        }
+      }
+      card.append(tag, row);
+      el.challengeList.append(card);
+      continue;
+    }
+
+    if (mineNow) {
+      const tag = document.createElement("div");
+      tag.className = "mine-tag";
+      tag.textContent = accessDoc.end ? `✓ Your challenge · access until ${shortDate(accessDoc.end)}` : "✓ Your challenge";
+      card.append(tag);
+    }
     const status = document.createElement("div");
     status.className = "challenge__status" + (st.done ? " is-done" : st.broken ? " is-broken" : "");
     status.textContent = challengeLine(c, st);
@@ -2516,7 +2658,7 @@ function renderChallenges() {
     const fill = document.createElement("span"); fill.style.width = Math.min(100, (st.count / st.target) * 100) + "%";
     meter.append(fill);
     const actions = document.createElement("div"); actions.className = "row";
-    if (!st.joined && !st.ended) {
+    if (free && !st.joined && !st.ended) {
       const b = document.createElement("button"); b.type = "button"; b.className = "btn btn--small"; b.textContent = "Join";
       b.addEventListener("click", () => setChallenge(c.id, true));
       actions.append(b);
@@ -2526,15 +2668,35 @@ function renderChallenges() {
         r.addEventListener("click", () => setChallenge(c.id, true));
         actions.append(r);
       }
-      if (!st.done && !st.ended) {
+      if (free && !st.done && !st.ended) {
         const l = document.createElement("button"); l.type = "button"; l.className = "btn btn--ghost btn--small"; l.textContent = "Leave";
         l.addEventListener("click", () => setChallenge(c.id, false));
         actions.append(l);
       }
     }
-    card.append(top, about, rule, status, meter, actions);
+    card.append(status, meter, actions);
     el.challengeList.append(card);
   }
+}
+
+// The message at the top of the Shop
+function renderAccessNote(state, pass) {
+  el.accessNote.replaceChildren();
+  let title = "", text = "";
+  if (state === "none") {
+    title = "Pick your challenge";
+    text = "Your account is ready. Choose a challenge below and pay to unlock the app for its dates: logging, points, streaks, the cycle tracker and groups are all included.";
+  } else if (state === "expired") {
+    title = pass ? `Your ${pass.name} has ended 🎉` : "Your access has ended";
+    text = "Thanks for taking part! Your logs are saved. Pick your next challenge to keep going.";
+  }
+  el.accessNote.hidden = !title;
+  if (!title) return;
+  const t = document.createElement("strong"); t.textContent = title;
+  const p = document.createElement("p"); p.textContent = text;
+  const p2 = document.createElement("p");
+  p2.textContent = `When you pay, use the email you sign in with (${me?.email || "your email"}). Your challenge opens within a few hours.`;
+  el.accessNote.append(t, p, p2);
 }
 
 // Leaderboards for challenges inside a group
@@ -2564,16 +2726,155 @@ function renderGroupChallenges() {
     box.append(h, ol);
     const st = challengeStatus(c);
     if (!st.joined && !st.ended && !blocked) {
-      const join = document.createElement("button");
-      join.type = "button";
-      join.className = "btn btn--small btn--fit";
-      join.textContent = `Join the ${c.name}`;
-      join.addEventListener("click", () => setChallenge(c.id, true));
-      box.append(join);
+      if (freeJoin()) {
+        const join = document.createElement("button");
+        join.type = "button";
+        join.className = "btn btn--small btn--fit";
+        join.textContent = `Join the ${c.name}`;
+        join.addEventListener("click", () => setChallenge(c.id, true));
+        box.append(join);
+      } else {
+        const shop = document.createElement("a");
+        shop.href = "#challenges";
+        shop.className = "btn btn--ghost btn--small btn--fit";
+        shop.textContent = `🛍️ Join the ${c.name} in the Shop`;
+        box.append(shop);
+      }
     }
     el.groupChallenges.append(box);
   }
 }
+
+// ---------- Admin: give people access after they pay ----------
+let adminFound = null;     // { id, email, name } of the person found by email
+let adminRows = null;      // everyone with access, once loaded
+let adminLoading = false;
+let adminRemoveArmed = null;
+
+const endOfDay = (iso) => new Date(iso + "T23:59:59").getTime();
+
+function adminDefaults() {
+  const pass = el.adminPass.value;
+  const start = el.adminStart.value || todayISO();
+  const c = CHALLENGES.find((x) => x.id === pass);
+  if (!c) el.adminEnd.value = "";                                        // all access: no end
+  else if (c.type === "streak") el.adminEnd.value = shiftDate(start, c.length - 1);
+  else el.adminEnd.value = c.end;
+}
+
+function adminSay(text) {
+  el.adminMsg.textContent = text;
+  el.adminMsg.hidden = !text;
+}
+
+function passName(a) {
+  if (a.all) return "⭐ All access";
+  const c = CHALLENGES.find((x) => x.id === a.challenge);
+  return c ? `${c.emoji} ${c.name}` : "Challenge";
+}
+
+async function loadAdminList() {
+  if (adminLoading) return;
+  adminLoading = true;
+  try { adminRows = await store.listAccess(); }
+  catch { adminRows = []; adminSay("Couldn't load the list. Check that the new database rules are pasted in."); }
+  adminLoading = false;
+  render();
+}
+
+function renderAdmin() {
+  if (el.adminPanel.hidden) return;
+  if (!el.adminPass.options.length) {
+    for (const c of CHALLENGES) {
+      const item = SHOP.items[c.id];
+      el.adminPass.add(new Option(`${c.emoji} ${c.name}${item?.price != null ? ` (${SHOP.currency}${item.price})` : ""}`, c.id));
+    }
+    el.adminPass.add(new Option("⭐ All access (family and friends, free)", "all"));
+  }
+  if (adminRows === null) { loadAdminList(); return; }
+  el.adminList.replaceChildren();
+  const rows = [...adminRows].sort((a, b) => (b.grantedAt || 0) - (a.grantedAt || 0));
+  if (!rows.length) {
+    const li = document.createElement("li");
+    li.className = "hint";
+    li.textContent = "Nobody yet.";
+    el.adminList.append(li);
+  }
+  for (const a of rows) {
+    const li = document.createElement("li");
+    li.className = "link-row";
+    const info = document.createElement("div");
+    info.className = "admin-row";
+    const n = document.createElement("strong"); n.textContent = a.name || a.email || "Someone";
+    const e = document.createElement("small"); e.textContent = a.email || "";
+    const active = a.endAt == null ? !!a.all : Date.now() <= a.endAt;
+    const d = document.createElement("small");
+    d.textContent = `${passName(a)} · ${a.end ? (active ? "until " : "ended ") + shortDate(a.end) : "no end date"}`;
+    info.append(n, e, d);
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.className = "btn btn--ghost btn--small btn--danger";
+    rm.textContent = adminRemoveArmed === a.id ? "Tap again to remove" : "Remove";
+    rm.addEventListener("click", async () => {
+      if (adminRemoveArmed !== a.id) { adminRemoveArmed = a.id; render(); return; }
+      adminRemoveArmed = null;
+      try {
+        await store.removeAccess(a.id);
+        adminSay(`Removed access for ${a.name || a.email}.`);
+        await loadAdminList();
+      } catch { adminSay("Couldn't remove. Try again."); }
+    });
+    li.append(info, rm);
+    el.adminList.append(li);
+  }
+}
+
+el.adminFind.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = el.adminEmail.value.trim().toLowerCase();
+  adminFound = null;
+  el.adminPerson.hidden = true;
+  if (!email.includes("@")) { adminSay("Type the email they signed up with."); return; }
+  adminSay("Looking…");
+  try {
+    const found = await store.findByEmail(email);
+    if (!found.length) { adminSay("No account with that email yet. Ask them to sign up and open the app once."); return; }
+    adminFound = found[0];
+    adminSay("");
+    const current = adminRows?.find((r) => r.id === adminFound.id);
+    el.adminPersonName.textContent = `${adminFound.name || "No name yet"} · ${adminFound.email}` +
+      (current ? ` (now: ${passName(current)})` : "");
+    el.adminStart.value = todayISO();
+    adminDefaults();
+    el.adminPerson.hidden = false;
+  } catch { adminSay("Couldn't search. Check that the new database rules are pasted in."); }
+});
+el.adminPass.addEventListener("change", adminDefaults);
+el.adminStart.addEventListener("change", adminDefaults);
+
+el.adminGrant.addEventListener("click", async () => {
+  if (!adminFound) return;
+  const pass = el.adminPass.value;
+  const all = pass === "all";
+  const start = el.adminStart.value || todayISO();
+  const end = el.adminEnd.value || null;
+  if (!all && !end) { adminSay("Choose an end date."); return; }
+  if (end && end < start) { adminSay("The end date is before the start date."); return; }
+  const data = {
+    challenge: all ? null : pass, all, start, end, endAt: end ? endOfDay(end) : null,
+    email: adminFound.email || "", name: adminFound.name || "", grantedAt: Date.now(),
+  };
+  el.adminGrant.disabled = true;
+  try {
+    await store.grantAccess(adminFound.id, data);
+    adminSay(`Done! ${adminFound.name || adminFound.email} now has ${passName(data)}${end ? ` until ${shortDate(end)}` : ""}.`);
+    el.adminPerson.hidden = true;
+    el.adminEmail.value = "";
+    adminFound = null;
+    await loadAdminList();
+  } catch { adminSay("Couldn't give access. Check that the new database rules are pasted in."); }
+  el.adminGrant.disabled = false;
+});
 
 // ---------- Groups ----------
 // Each member keeps a small summary of their last 7 days in every group they're in.

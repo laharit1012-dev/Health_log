@@ -147,3 +147,11 @@ Bump the version number in all of these, to the same number:
 - the `?v=` on the imports at the top of `app.js`
 
 Phones then load the new files instead of an older saved copy. When the app opens or comes back on screen, it compares itself with `version.json` and shows **A new version of Health Log is ready · Update now** if it's behind. **Account → Refresh app** always reloads the newest version.
+
+## Paid access and the Shop (version 37)
+
+- People pay for one challenge. An admin then opens **Account → 🛠️ Admin**, finds them by email and gives them that challenge. The app opens for the challenge's dates and locks again afterwards, leaving only the Shop and Account.
+- **All access** (no end date) is for family and friends: everything is open and every challenge can be joined for free.
+- Prices and payment links are in `shop.js`. Put a Razorpay or Stripe payment link in `payLink` and the Shop shows a **Pay & join** button.
+- Admins are marked by a document `admins/<their user ID>`, created by hand in the Firebase console.
+- Database: `access/<uid>` (written only by admins), `directory/<uid>` (email and name, so admins can search). The rules in `firestore.rules` only allow saving a day's log while someone has access.

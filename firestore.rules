@@ -2,12 +2,48 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Admins: a document admins/<uid> marks that person as an admin.
+    // Created by hand in the Firebase console; nobody can create one from the app.
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Paid access: access/<uid> { challenge, all, start, end, endAt }.
+    // All access without an end date, or any pass until endAt (milliseconds).
+    function hasAccess(uid) {
+      let path = /databases/$(database)/documents/access/$(uid);
+      return exists(path) && (
+        (get(path).data.all == true && get(path).data.endAt == null)
+        || (get(path).data.endAt != null && get(path).data.endAt >= request.time.toMillis())
+      );
+    }
+
+    match /admins/{uid} {
+      allow get: if request.auth != null && request.auth.uid == uid;
+      allow list, write: if false;
+    }
+
+    // Only admins give or remove access; each person can see their own.
+    match /access/{uid} {
+      allow get: if request.auth != null && (request.auth.uid == uid || isAdmin());
+      allow list, write: if isAdmin();
+    }
+
+    // Email and name, so an admin can find someone who paid.
+    match /directory/{uid} {
+      allow read: if isAdmin();
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
     // Each person's own log: only they can read or change it.
+    // New entries need access (a paid challenge, or all access).
     match /users/{uid} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
 
       match /days/{day} {
-        allow read, write: if request.auth != null && request.auth.uid == uid;
+        allow read, delete: if request.auth != null && request.auth.uid == uid;
+        allow create, update: if request.auth != null && request.auth.uid == uid && hasAccess(uid);
       }
     }
 
