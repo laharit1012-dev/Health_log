@@ -39,12 +39,12 @@ Setup (once):
 1. Firebase console → Project settings → **Cloud Messaging** → Web Push certificates → **Generate key pair**. Put the key in `vapidKey` in `firebase-config.js`.
 2. Firebase console → Project settings → **Service accounts** → **Generate new private key**. In GitHub → Settings → Secrets and variables → Actions, add it as a secret named `FIREBASE_SERVICE_ACCOUNT` (paste the whole file's contents). Never commit this file.
 
-## XP, levels and badges
+## Points, levels and badges
 
-- **XP:** each day earns +10 for logging anything, +20 for each goal reached (steps, water, sleep, workout), +10 for logging food, and a +30 bonus for a perfect day (all four goals). Past days count too.
-- **Levels:** Starter, Walker (100 XP), Mover (300), Hiker (600), Runner (1,000), Climber (1,500), Athlete (2,100), Champion (2,800), Hero (3,600), Legend (4,500). Group members see each other's levels.
-- **Badges (12):** First step, 10K club, Perfect day, On a roll (3-day step streak), Week warrior (7), Unstoppable (30), Hydration hero, Workout warrior, Well rested, Marathon week, Team player, Runner rank.
-- The Today page shows your level, XP to the next level, today's activity ring, and your badge shelf.
+- **Points:** each day earns +10 for logging anything, +20 for each goal reached (steps, water, sleep, workout), +10 for logging food, and a +30 bonus for a perfect day (all four goals). Past days count too.
+- **Levels:** Starter, Walker (100 XP), Mover (300), Hiker (600), Runner (1,000), Climber (1,500), Athlete (2,100), Champion (2,800), Hero (3,600), Legend (4,500) points. Group members see each other's points and levels.
+- **Badges (13):** First step, 10K club, Perfect day, On a roll (3-day step streak), Week warrior (7), Unstoppable (30), Hydration hero, Workout warrior, Well rested, Marathon week, Team player, Runner rank, Group champion (most points in a group of 2 or more).
+- The Today page shows your total points, level, points to the next level, today's activity ring, and your badge shelf.
 
 ## Cycle phases and cycle updates
 
@@ -60,6 +60,7 @@ On the **Family** page, under **Groups**:
 - **Activity rate:** progress toward the steps, workout and sleep goals, plus whether food was logged. Each part counts for a quarter and is capped at 100%.
 - **Overall rank:** by average activity rate over the last 7 days (days with nothing logged count as 0); ties share a rank.
 - Shared with the group: steps, workout minutes, sleep hours, number of food items and calories, and goals, for the last 7 days. Never what was eaten, notes, or the cycle tracker.
+- Whoever has the most points in the group gets a **★ Top points** badge on their box (ties share it).
 - The creator can remove members or delete the group; anyone can leave.
 
 ## Install it like an app

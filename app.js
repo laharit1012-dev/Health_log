@@ -15,8 +15,8 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=26";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=26";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=27";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=27";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -1736,7 +1736,7 @@ async function forgetThisDevice() {
   } catch {}
 }
 
-// ---------- XP, levels and badges ----------
+// ---------- Points, levels and badges ----------
 const LEVELS = [
   [0, "Starter"], [100, "Walker"], [300, "Mover"], [600, "Hiker"], [1000, "Runner"],
   [1500, "Climber"], [2100, "Athlete"], [2800, "Champion"], [3600, "Hero"], [4500, "Legend"],
@@ -1748,7 +1748,7 @@ function levelFor(xp) {
   return { level: i + 1, name: LEVELS[i][1], floor: LEVELS[i][0], next: LEVELS[i + 1]?.[0] ?? null };
 }
 
-// XP for one day: +10 for logging anything, +20 per goal reached, +10 for food, +30 for a perfect day
+// Points for one day: +10 for logging anything, +20 per goal reached, +10 for food, +30 for a perfect day
 function dayXP(log, g) {
   const n = normalize(log, log?.date);
   const any = n.steps || n.water || n.foods.length || n.workouts.length || n.sleep.bed || n.sleep.wake;
@@ -1773,6 +1773,7 @@ const BADGES = [
   { id: "marathon", glyph: "42K", name: "Marathon week", how: "55,000 steps in 7 days" },
   { id: "team", glyph: "+", name: "Team player", how: "Join or create a group" },
   { id: "level5", glyph: "L5", name: "Runner rank", how: "Reach Level 5" },
+  { id: "champion", glyph: "#1", name: "Group champion", how: "Most points in a group" },
 ];
 
 // All your days we know about (last 60 days plus unsaved edits)
@@ -1831,7 +1832,7 @@ function initProgress() {
   updateProgress(null, { quiet: true });
 }
 
-// Recalculate XP (for one day, or all known days) and award new badges
+// Recalculate points (for one day, or all known days) and award new badges
 let progressBusy = false;
 async function updateProgress(onlyDate, { quiet = false } = {}) {
   if (!store?.saveXP || !recentLogs || !profile || progressBusy) return;
@@ -1848,25 +1849,30 @@ async function updateProgress(onlyDate, { quiet = false } = {}) {
     if (Object.keys(changes).length) {
       profile = { ...profile, xpDays: { ...(profile.xpDays || {}), ...changes } };
       await store.saveXP(changes).catch(() => {});
+      syncGroups(); // so groups see your new points
     }
     const after = levelFor(totalXP());
     if (!quiet && after.level > before.level) {
       showToast(`Level up! You're now Level ${after.level} · ${after.name}`);
       burstConfetti();
     }
-    const have = profile.badges || {};
-    const fresh = [...earnedNow()].filter((id) => !have[id]);
-    if (fresh.length) {
-      const stamp = Object.fromEntries(fresh.map((id) => [id, todayISO()]));
-      profile = { ...profile, badges: { ...have, ...stamp } };
-      await store.saveBadges(stamp).catch(() => {});
-      for (const id of fresh) showToast(`Badge unlocked: ${BADGES.find((b) => b.id === id).name}!`);
-      burstConfetti();
-    }
+    await awardBadges([...earnedNow()]);
     render();
   } finally {
     progressBusy = false;
   }
+}
+
+async function awardBadges(ids) {
+  const have = profile?.badges || {};
+  const fresh = ids.filter((id) => !have[id]);
+  if (!fresh.length || !store?.saveBadges) return;
+  const stamp = Object.fromEntries(fresh.map((id) => [id, todayISO()]));
+  profile = { ...profile, badges: { ...have, ...stamp } };
+  await store.saveBadges(stamp).catch(() => {});
+  for (const id of fresh) showToast(`Badge unlocked: ${BADGES.find((b) => b.id === id).name}!`);
+  burstConfetti();
+  render();
 }
 
 function renderProgress() {
@@ -1876,11 +1882,11 @@ function renderProgress() {
     const xp = totalXP();
     const lv = levelFor(xp);
     const todayXP = dayXP(logNow(), goalsNow());
-    el.levelNum.textContent = lv.level;
+    el.levelNum.textContent = fmt(xp);
     el.levelName.textContent = `Level ${lv.level} · ${lv.name}`;
     el.levelBar.style.width = lv.next ? Math.round(((xp - lv.floor) / (lv.next - lv.floor)) * 100) + "%" : "100%";
-    el.levelHint.textContent = (lv.next ? `${fmt(lv.next - xp)} XP to Level ${lv.level + 1}` : `${fmt(xp)} XP · top level!`) +
-      (date === todayISO() ? ` · +${todayXP} XP today` : "");
+    el.levelHint.textContent = (lv.next ? `${fmt(lv.next - xp)} points to Level ${lv.level + 1}` : "Top level reached!") +
+      (date === todayISO() ? ` · +${todayXP} points today` : "");
     const sm = daySummary(logNow(), goalsNow());
     el.todayRing.replaceChildren(rateRing(activityRate(sm), date === todayISO() ? "today" : "this day"));
   }
@@ -1936,7 +1942,7 @@ function memberData() {
     const log = drafts[d] || recentLogs?.[d] || (d === date && dayLog ? dayLog : null);
     if (log) days[d] = daySummary({ ...log, date: d }, g);
   }
-  return { name: displayName() || "Member", updatedAt: Date.now(), days, level: levelFor(totalXP()).level };
+  return { name: displayName() || "Member", updatedAt: Date.now(), days, level: levelFor(totalXP()).level, points: totalXP() };
 }
 
 let groupSyncTimer = null;
@@ -1997,7 +2003,7 @@ function rateRing(pct, label) {
   wrap.setAttribute("aria-label", `Activity ${label}: ${pct}%`);
   wrap.innerHTML = `<svg viewBox="0 0 56 56" aria-hidden="true">
       <circle cx="28" cy="28" r="${r}" class="rate__track"/>
-      <circle cx="28" cy="28" r="${r}" class="rate__fill" stroke-dasharray="${(c * pct) / 100} ${c}" transform="rotate(-90 28 28)"/>
+      ${pct > 0 ? `<circle cx="28" cy="28" r="${r}" class="rate__fill" stroke-dasharray="${(c * pct) / 100} ${c}" transform="rotate(-90 28 28)"/>` : ""}
     </svg>`;
   const txt = document.createElement("span");
   txt.className = "rate__text";
@@ -2100,6 +2106,12 @@ function renderGroups() {
   const ranks = [];
   sorted.forEach((m, i) => { ranks[i] = i > 0 && weeklyRate(m) === weeklyRate(sorted[i - 1]) ? ranks[i - 1] : i + 1; });
 
+  // Most points in the group earns the Top points badge (ties share it)
+  const topPoints = Math.max(0, ...groupMembers.map((m) => m.points || 0));
+  const meTop = groupMembers.length >= 2 && topPoints > 0 &&
+    (groupMembers.find((m) => m.id === store.uid)?.points || 0) === topPoints;
+  if (meTop && !profile?.badges?.champion) awardBadges(["champion"]);
+
   el.groupMembers.replaceChildren();
   sorted.forEach((m, i) => {
     const sm = m.days?.[today] || null;
@@ -2119,12 +2131,22 @@ function renderGroups() {
     name.textContent = (m.name || "Member") + (me ? " (you)" : "");
     const place = document.createElement("span");
     place.className = "member__place";
-    place.textContent = `${ordinal(ranks[i])} of ${sorted.length} overall` + (m.level ? ` · Level ${m.level}` : "") + (m.id === groupInfo?.owner ? " · group creator" : "");
+    place.textContent = `${ordinal(ranks[i])} of ${sorted.length} overall · ${fmt(m.points || 0)} points` +
+      (m.level ? ` · Level ${m.level}` : "") + (m.id === groupInfo?.owner ? " · group creator" : "");
     const st = statusFor(sm);
     const badge = document.createElement("span");
     badge.className = "badge " + st.cls;
     badge.textContent = st.text;
-    who.append(name, place, badge);
+    const tags = document.createElement("div");
+    tags.className = "member__badges";
+    if (topPoints > 0 && (m.points || 0) === topPoints) {
+      const top = document.createElement("span");
+      top.className = "badge badge--top";
+      top.textContent = "★ Top points";
+      tags.append(top);
+    }
+    tags.append(badge);
+    who.append(name, place, tags);
     head.append(rankBox, who, rateRing(activityRate(sm), "today"));
 
     const stats = document.createElement("dl");

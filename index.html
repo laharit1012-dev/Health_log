@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=26">
+  <link rel="stylesheet" href="styles.css?v=27">
 </head>
 <body>
   <!-- Background wallpaper: full on Today, dimmed on the other pages -->
@@ -169,7 +169,7 @@
         <p id="nudge-text"></p>
       </div>
       <div id="level-card" class="level-card" hidden>
-        <div class="level-card__num" aria-hidden="true"><small>LEVEL</small><span id="level-num">1</span></div>
+        <div class="level-card__num" aria-hidden="true"><span id="level-num">0</span><small>POINTS</small></div>
         <div class="level-card__body">
           <strong id="level-name">Starter</strong>
           <div class="meter" aria-hidden="true"><span id="level-bar"></span></div>
@@ -330,12 +330,12 @@
       </div>
       <ul id="badge-grid" class="badge-grid"></ul>
       <details class="xp-help">
-        <summary>How to earn XP</summary>
+        <summary>How to earn points</summary>
         <ul>
-          <li>Log anything in a day: <strong>+10 XP</strong></li>
-          <li>Each goal reached (steps, water, sleep, workout): <strong>+20 XP</strong></li>
-          <li>Log your food: <strong>+10 XP</strong></li>
-          <li>Perfect day, all four goals: <strong>+30 XP bonus</strong></li>
+          <li>Log anything in a day: <strong>+10 points</strong></li>
+          <li>Each goal reached (steps, water, sleep, workout): <strong>+20 points</strong></li>
+          <li>Log your food: <strong>+10 points</strong></li>
+          <li>Perfect day, all four goals: <strong>+30 bonus points</strong></li>
         </ul>
       </details>
     </section>
@@ -579,13 +579,13 @@
   </nav>
 
   <footer class="site-footer">
-    <p>Health Log · version <span id="app-version">26</span> · <a href="privacy.html">Privacy policy</a></p>
+    <p>Health Log · version <span id="app-version">27</span> · <a href="privacy.html">Privacy policy</a></p>
   </footer>
 
   <!-- Goal celebrations -->
   <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <script type="module" src="app.js?v=26"></script>
+  <script type="module" src="app.js?v=27"></script>
 </body>
 </html>
