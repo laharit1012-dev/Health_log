@@ -15,11 +15,11 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=39";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=39";
-import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=39";
-import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=39";
-import { SHOP } from "./shop.js?v=39";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=40";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=40";
+import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=40";
+import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=40";
+import { SHOP } from "./shop.js?v=40";
 
 // ---------- Challenge invites ----------
 // A link like ?invite=christmas-2026&group=K7QF-9XMA-2PDW is kept until the person signs in,
@@ -42,7 +42,7 @@ function clearInvite() { try { localStorage.removeItem(INVITE_KEY); } catch {} }
 
 // ---------- App version and updates ----------
 // Bump APP_VERSION and version.json together when publishing an update.
-const APP_VERSION = 39;
+const APP_VERSION = 40;
 
 // Open the newest version: a unique address makes the phone fetch fresh files
 function reloadFresh() {
