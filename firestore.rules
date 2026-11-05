@@ -9,14 +9,21 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
-    // Paid access: access/<uid> { challenge, all, start, end, endAt }.
-    // All access without an end date, or any pass until endAt (milliseconds).
-    function hasAccess(uid) {
-      let path = /databases/$(database)/documents/access/$(uid);
+    // Access record { challenge, all, start, end, endAt } that is still valid:
+    // all access without an end date, or any pass until endAt (milliseconds).
+    function activeAt(path) {
       return exists(path) && (
         (get(path).data.all == true && get(path).data.endAt == null)
         || (get(path).data.endAt != null && get(path).data.endAt >= request.time.toMillis())
       );
+    }
+
+    // Access is given to an account (access/<uid>) or to an email before the person
+    // signs up (accessByEmail/<email>); the email one only counts once the email is verified.
+    function hasAccess(uid) {
+      return activeAt(/databases/$(database)/documents/access/$(uid))
+        || (request.auth.token.email_verified == true
+            && activeAt(/databases/$(database)/documents/accessByEmail/$(request.auth.token.email.lower())));
     }
 
     match /admins/{uid} {
@@ -27,6 +34,13 @@ service cloud.firestore {
     // Only admins give or remove access; each person can see their own.
     match /access/{uid} {
       allow get: if request.auth != null && (request.auth.uid == uid || isAdmin());
+      allow list, write: if isAdmin();
+    }
+
+    // Access waiting for an email address; its owner can read it once their email is verified.
+    match /accessByEmail/{email} {
+      allow get: if request.auth != null && (isAdmin()
+        || (request.auth.token.email_verified == true && request.auth.token.email.lower() == email));
       allow list, write: if isAdmin();
     }
 

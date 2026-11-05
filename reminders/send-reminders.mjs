@@ -53,15 +53,19 @@ const shareCache = new Map();
 
 // Reminders only go to people whose access is active (a paid challenge, or all access).
 // If access isn't set up for anyone yet, everyone keeps getting reminders.
-const accessSnap = await db.collection("access").get();
+const [accessSnap, byEmailSnap] = await Promise.all([db.collection("access").get(), db.collection("accessByEmail").get()]);
 const accessById = new Map(accessSnap.docs.map((d) => [d.id, d.data()]));
-const accessInUse = accessSnap.size > 0;
-const hasAccess = (id) => {
+const accessByEmail = new Map(byEmailSnap.docs.map((d) => [d.id, d.data()]));
+const accessInUse = accessSnap.size + byEmailSnap.size > 0;
+const activeRecord = (a) => !!a && ((a.all === true && a.endAt == null) || (a.endAt != null && a.endAt >= now.getTime()));
+async function hasAccess(id) {
   if (!accessInUse) return true;
-  const a = accessById.get(id);
-  if (!a) return false;
-  return (a.all === true && a.endAt == null) || (a.endAt != null && a.endAt >= now.getTime());
-};
+  if (activeRecord(accessById.get(id))) return true;
+  try {
+    const user = await admin.auth().getUser(id);
+    return !!user.email && user.emailVerified && activeRecord(accessByEmail.get(user.email.toLowerCase()));
+  } catch { return false; }
+}
 
 for (const snap of users.docs) {
   const u = snap.data();
@@ -88,7 +92,7 @@ for (const snap of users.docs) {
     ` | water ${r.water?.on ? `on ${r.water.from}-${r.water.to} every ${r.water.every}h` : "off"}` +
     ` | due now: ${[waterKey && "water", workoutKey && "workout"].filter(Boolean).join(", ") || "nothing"}`);
 
-  const allowed = hasAccess(snap.id);
+  const allowed = await hasAccess(snap.id);
   if (!allowed && !u.pushTest) {
     console.log(`${who}: no active access (challenge ended or not paid yet), reminders paused`);
     continue;

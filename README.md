@@ -161,3 +161,9 @@ Phones then load the new files instead of an older saved copy. When the app open
 - **Invite friends**: on your challenge (Today card or Shop) tap **👥 Invite friends**. It makes a group for that challenge and shares a link (`?invite=<challenge>&group=<code>`). Whoever opens it signs up, joins the group, and lands on that challenge in the Shop to pay.
 - **Prize**: `SHOP.prize` in `shop.js` is shown on every challenge. Each challenge counts points (0–100 a day) from its start. Group leaderboards rank by points. Admin → Challenge leaderboards lists everyone; **🏆 Give prize** gives 30 days of free all access, added after any access they still have.
 - **Today** shows your day, points, challenge and badges. The round **+** button (or tapping your stats) opens the log as a sheet; goals are edited at the bottom of that sheet.
+
+## Access by email, device limit, thank-you page (version 42)
+
+- Admin gives access to an **email** (`accessByEmail/<email>`), so it works before the person signs up. It only counts once their email is verified. Older grants in `access/<uid>` still work.
+- One account works on **2 devices**; signing in on a third signs out the device used longest ago (`users/<uid>.sessions`). Admins aren't limited.
+- `thanks.html` is the page Stripe shows after payment ("check your email within 2–3 hours").

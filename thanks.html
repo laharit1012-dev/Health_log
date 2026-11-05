@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>You're in! · Health Log</title>
+  <meta name="description" content="Thank you for joining a Health Log challenge.">
+  <meta name="robots" content="noindex">
+  <script>
+    try { var t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png?v=10">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=10">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,700&display=swap">
+  <link rel="stylesheet" href="styles.css?v=42">
+  <style>
+    .thanks { max-width: 34rem; margin: 0 auto; padding-block: 3rem;
+      padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+      display: grid; gap: 1.25rem; text-align: center; }
+    .thanks__emoji { font-size: 4rem; line-height: 1; }
+    .thanks h1 { font-size: clamp(2rem, 7vw, 2.75rem); margin: 0; }
+    .thanks p { margin: 0; font-size: 1.125rem; }
+    .thanks ol { text-align: left; display: grid; gap: 0.75rem; padding: 1.25rem 1.25rem 1.25rem 2.5rem; margin: 0;
+      border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); }
+    .thanks li { font-size: 1.0625rem; }
+    .thanks .note { font-size: 0.9375rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main class="thanks">
+    <div class="thanks__emoji" aria-hidden="true">🎉</div>
+    <h1>You're in!</h1>
+    <p>Thank you for joining the challenge. Your payment went through.</p>
+    <ol>
+      <li><strong>Check your email within 2–3 hours.</strong> We'll send your next steps to the <strong>same email you paid with</strong>.</li>
+      <li>Create your account with <strong>that same email</strong>, so your challenge is ready when you sign in.</li>
+      <li>Add the app to your Home Screen and start logging. 💪</li>
+    </ol>
+    <p class="note">Can't find the email? Check your spam or promotions folder.</p>
+  </main>
+</body>
+</html>

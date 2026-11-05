@@ -12,14 +12,14 @@ import {
   EmailAuthProvider, reauthenticateWithCredential, deleteUser,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
+  getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove, deleteField,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=41";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=41";
-import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=41";
-import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=41";
-import { SHOP, shopItem } from "./shop.js?v=41";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=42";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=42";
+import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=42";
+import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=42";
+import { SHOP, shopItem } from "./shop.js?v=42";
 
 // ---------- Challenge invites ----------
 // A link like ?invite=christmas-2026&group=K7QF-9XMA-2PDW is kept until the person signs in,
@@ -42,7 +42,7 @@ function clearInvite() { try { localStorage.removeItem(INVITE_KEY); } catch {} }
 
 // ---------- App version and updates ----------
 // Bump APP_VERSION and version.json together when publishing an update.
-const APP_VERSION = 41;
+const APP_VERSION = 42;
 
 // Open the newest version: a unique address makes the phone fetch fresh files
 function reloadFresh() {
@@ -195,7 +195,8 @@ const workoutMinutes = (log) => log.workouts.reduce((sum, w) => sum + (Number(w.
 // know the code; the code can't be listed or guessed in practice):
 //   shares/<code>              { owner: <uid>, name, cycle (only if she chose to share it) }
 //   shares/<code>/days/<date>  copy of each day
-function firestoreStore(db, uid) {
+function firestoreStore(db, uid, email = "") {
+  const myEmail = (email || "").toLowerCase();
   const userRef = doc(db, "users", uid);
   const dayRef = (date) => doc(db, "users", uid, "days", date);
   const shareRef = (code) => doc(db, "shares", code);
@@ -210,7 +211,7 @@ function firestoreStore(db, uid) {
     kind: "account",
     canLink: true,
     watchProfile: (cb, onError) => watch(userRef, (d, m) => cb(d
-      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null, groups: Array.isArray(d.groups) ? d.groups : [], xpDays: d.xpDays || {}, badges: d.badges || {}, plan: d.plan || null, equip: d.equip || "bodyweight", challenges: Array.isArray(d.challenges) ? d.challenges : [] }
+      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null, groups: Array.isArray(d.groups) ? d.groups : [], xpDays: d.xpDays || {}, badges: d.badges || {}, plan: d.plan || null, equip: d.equip || "bodyweight", challenges: Array.isArray(d.challenges) ? d.challenges : [], sessions: d.sessions || null }
       : null, m), onError),
     watchSharing: (cb, onError) => watch(userRef, (d, m) => cb(d?.shareCode ? { code: d.shareCode, cycle: !!d.shareCycle } : null, m), onError),
     watchLinks: (cb, onError) => watch(userRef, (d, m) => cb({ people: Array.isArray(d?.links) ? d.links : [] }, m), onError),
@@ -306,7 +307,19 @@ function firestoreStore(db, uid) {
     watchSharedProfile: (code, cb, onError) => watch(shareRef(code), cb, onError),
 
     // Paid access: access/<uid> { challenge | null, all, start, end, endAt } is written only by admins
-    watchAccess: (cb, onError) => watch(doc(db, "access", uid), cb, onError),
+    // Access can be given to the account (access/<uid>) or to an email before the person
+    // signs up (accessByEmail/<email>, used once their email is verified). The better one wins.
+    watchAccess(cb, onError) {
+      let byUid, byEmail = myEmail ? undefined : null;
+      const send = () => { if (byUid !== undefined && byEmail !== undefined) cb(betterAccess(byUid, byEmail)); };
+      const u1 = watch(doc(db, "access", uid), (d) => { byUid = d; send(); }, onError);
+      const u2 = myEmail
+        ? watch(doc(db, "accessByEmail", myEmail), (d) => { byEmail = d; send(); }, () => { byEmail = null; send(); })
+        : () => {};
+      return () => { u1(); u2(); };
+    },
+    // Up to 2 devices per account: { deviceId: { name, at } }
+    saveSessions: (sessions) => mergeUser({ sessions }),
     // directory/<uid> { email, name } lets an admin find someone by email
     saveDirectory: (email, name, extra = {}) => setDoc(doc(db, "directory", uid),
       { email: (email || "").toLowerCase(), name: name || "", updatedAt: Date.now(), ...extra }, { merge: true }),
@@ -322,11 +335,15 @@ function firestoreStore(db, uid) {
       const snap = await getDocs(query(collection(db, "directory"), where("email", "==", email.toLowerCase())));
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     },
-    grantAccess: (personUid, data) => setDoc(doc(db, "access", personUid), data),
-    removeAccess: (personUid) => deleteDoc(doc(db, "access", personUid)),
+    // Admins give access by email, so it works before or after the person signs up
+    grantAccess: (personEmail, data) => setDoc(doc(db, "accessByEmail", personEmail.toLowerCase()), data),
+    removeAccess: (row) => deleteDoc(doc(db, row.coll, row.id)),
     async listAccess() {
-      const snap = await getDocs(collection(db, "access"));
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const [a, b] = await Promise.all([getDocs(collection(db, "access")), getDocs(collection(db, "accessByEmail"))]);
+      return [
+        ...a.docs.map((d) => ({ id: d.id, coll: "access", ...d.data() })),
+        ...b.docs.map((d) => ({ id: d.id, coll: "accessByEmail", ...d.data() })),
+      ];
     },
     watchSharedDay: (code, date, cb, onError) => watch(shareDayRef(code, date), cb, onError),
   };
@@ -375,6 +392,16 @@ let accessKnown = false;
 let accessOpen = false;    // the database rules for access aren't set up yet: everything stays open
 let isAdmin = false;
 let adminChecked = false;
+
+// Of two access records, the one that lasts longer (no end date beats any date)
+function accessScore(d) {
+  if (!d) return -Infinity;
+  if (d.endAt == null) return d.all ? Infinity : -1;
+  return d.endAt;
+}
+function betterAccess(a, b) {
+  return accessScore(b) > accessScore(a) ? b : a || b || null;
+}
 
 function accessNow() {
   if (accessOpen) return "open";
@@ -1635,6 +1662,9 @@ function start(s) {
     render();
     initProgress();
     processInvite();
+    profileSeen = true;
+    checkKicked(p);
+    registerDevice();
     // Keep the admin's search list current (email + name only)
     if (store.saveDirectory && me?.email && (!listed || p?.name !== listed)) {
       listed = p?.name || "";
@@ -1650,7 +1680,7 @@ function start(s) {
       render();
       processInvite();
     });
-    store.isAdmin().then((v) => { isAdmin = v; adminChecked = true; render(); });
+    store.isAdmin().then((v) => { isAdmin = v; adminChecked = true; render(); registerDevice(); });
   }
   if (store.canLink) {
     store.watchSharing((d) => { sharing = d?.code ? d : null; render(); }, () => {});
@@ -1783,6 +1813,54 @@ el.signOutBtn.addEventListener("click", async () => {
   await signOut(auth);
   location.reload(); // start clean so nothing from this account stays on screen
 });
+
+// ---------- Device limit ----------
+// One account works on up to 2 devices (say a phone and an iPad). Signing in on a third
+// signs out the one used longest ago, so sharing a paid account doesn't work well.
+// Admins aren't limited.
+const MAX_DEVICES = 2;
+const DEVICE_KEY = "health-log-device";
+const KICKED_KEY = "health-log-kicked";
+let deviceState = "pending";   // pending, registering, registered, skip, kicked
+let profileSeen = false;
+
+let deviceId = null;
+function myDeviceId() {
+  if (deviceId) return deviceId;
+  try {
+    deviceId = localStorage.getItem(DEVICE_KEY);
+    if (!deviceId) { deviceId = crypto.randomUUID(); localStorage.setItem(DEVICE_KEY, deviceId); }
+  } catch { deviceId = null; }
+  return deviceId;
+}
+
+async function registerDevice() {
+  if (deviceState !== "pending" || !profileSeen || !adminChecked || !store?.saveSessions) return;
+  const id = myDeviceId();
+  if (isAdmin || !id) { deviceState = "skip"; return; }
+  deviceState = "registering";
+  const others = Object.entries(profile?.sessions || {})
+    .filter(([k]) => k !== id)
+    .sort((a, b) => (b[1]?.at || 0) - (a[1]?.at || 0));
+  const changes = { [id]: { name: deviceName(), at: Date.now() } };
+  for (const [k] of others.slice(MAX_DEVICES - 1)) changes[k] = deleteField();
+  try { await store.saveSessions(changes); deviceState = "registered"; }
+  catch { deviceState = "skip"; }
+}
+
+function checkKicked(p) {
+  if (deviceState !== "registered" || !p?.sessions) return;
+  if (!p.sessions[myDeviceId()]) kickOut();
+}
+
+async function kickOut() {
+  deviceState = "kicked";
+  try { sessionStorage.setItem(KICKED_KEY, "1"); } catch {}
+  for (const d of Object.keys(timers)) { clearTimeout(timers[d]); flush(d); }
+  await Promise.allSettled(Object.values(chains));
+  await forgetThisDevice();
+  await signOut(auth);
+}
 
 // ---------- Reminders ----------
 const DEFAULT_REMINDERS = {
@@ -2979,7 +3057,8 @@ function renderAdmin() {
     const info = document.createElement("div");
     info.className = "admin-row";
     const n = document.createElement("strong"); n.textContent = a.name || a.email || "Someone";
-    const e = document.createElement("small"); e.textContent = a.email || "";
+    const e = document.createElement("small");
+    e.textContent = a.email || a.id;
     const active = a.endAt == null ? !!a.all : Date.now() <= a.endAt;
     const d = document.createElement("small");
     d.textContent = `${passName(a)} · ${a.end ? (active ? "until " : "ended ") + shortDate(a.end) : "no end date"}`;
@@ -2987,12 +3066,13 @@ function renderAdmin() {
     const rm = document.createElement("button");
     rm.type = "button";
     rm.className = "btn btn--ghost btn--small btn--danger";
-    rm.textContent = adminRemoveArmed === a.id ? "Tap again to remove" : "Remove";
+    const key = a.coll + "/" + a.id;
+    rm.textContent = adminRemoveArmed === key ? "Tap again to remove" : "Remove";
     rm.addEventListener("click", async () => {
-      if (adminRemoveArmed !== a.id) { adminRemoveArmed = a.id; render(); return; }
+      if (adminRemoveArmed !== key) { adminRemoveArmed = key; render(); return; }
       adminRemoveArmed = null;
       try {
-        await store.removeAccess(a.id);
+        await store.removeAccess(a);
         adminSay(`Removed access for ${a.name || a.email}.`);
         await loadAdminList();
       } catch { adminSay("Couldn't remove. Try again."); }
@@ -3042,13 +3122,15 @@ function renderBoard() {
       if (prizeArmed !== d.id) { prizeArmed = d.id; render(); return; }
       prizeArmed = null;
       // 1 month free: 30 days, added after any access they still have
-      const current = (adminRows || []).find((r) => r.id === d.id);
+      const current = (adminRows || []).filter((r) => r.id === d.id || (r.email || "").toLowerCase() === (d.email || "").toLowerCase())
+        .reduce((best, r) => betterAccess(best, r), null);
       const today = todayISO();
       const from = current?.end && current.end > today ? current.end : today;
       const end = shiftDate(from, 30);
       const data = { challenge: null, all: true, prize: id, start: today, end, endAt: endOfDay(end), email: d.email || "", name: d.name || "", grantedAt: Date.now() };
       try {
-        await store.grantAccess(d.id, data);
+        if (!d.email) { adminSay("This person has no email on file. Ask them to open the app once."); return; }
+        await store.grantAccess(d.email, data);
         adminSay(`🏆 ${d.name || d.email} won the ${c.name}! Free access until ${shortDate(end)}.`);
         await loadAdminList();
       } catch { adminSay("Couldn't give the prize. Try again."); }
@@ -3064,15 +3146,16 @@ el.adminFind.addEventListener("submit", async (e) => {
   const email = el.adminEmail.value.trim().toLowerCase();
   adminFound = null;
   el.adminPerson.hidden = true;
-  if (!email.includes("@")) { adminSay("Type the email they signed up with."); return; }
+  if (!email.includes("@")) { adminSay("Type the email they paid with."); return; }
   adminSay("Looking…");
   try {
     const found = await store.findByEmail(email);
-    if (!found.length) { adminSay("No account with that email yet. Ask them to sign up and open the app once."); return; }
-    adminFound = found[0];
-    adminSay("");
-    const current = adminRows?.find((r) => r.id === adminFound.id);
-    el.adminPersonName.textContent = `${adminFound.name || "No name yet"} · ${adminFound.email}` +
+    // Not signed up yet is fine: the access waits for them under this email
+    adminFound = found[0] || { id: null, email, name: "" };
+    adminSay(found.length ? "" : "No account with this email yet. That's fine: give access now and it will be ready when they sign up with this email.");
+    const current = (adminRows || []).filter((r) => (r.email || "").toLowerCase() === email || (found[0] && r.id === found[0].id))
+      .reduce((best, r) => betterAccess(best, r), null);
+    el.adminPersonName.textContent = `${adminFound.name || (found.length ? "No name yet" : "Not signed up yet")} · ${adminFound.email}` +
       (current ? ` (now: ${passName(current)})` : "");
     el.adminStart.value = todayISO();
     adminDefaults();
@@ -3096,7 +3179,7 @@ el.adminGrant.addEventListener("click", async () => {
   };
   el.adminGrant.disabled = true;
   try {
-    await store.grantAccess(adminFound.id, data);
+    await store.grantAccess(adminFound.email, data);
     adminSay(`Done! ${adminFound.name || adminFound.email} now has ${passName(data)}${end ? ` until ${shortDate(end)}` : ""}.`);
     el.adminPerson.hidden = true;
     el.adminEmail.value = "";
@@ -3785,6 +3868,9 @@ render();
       let deleted = false;
       try { deleted = sessionStorage.getItem("health-log-deleted") === "1"; sessionStorage.removeItem("health-log-deleted"); } catch {}
       if (deleted) auth_.msg.textContent = "Your account and all its data were deleted.";
+      let kicked = false;
+      try { kicked = sessionStorage.getItem(KICKED_KEY) === "1"; sessionStorage.removeItem(KICKED_KEY); } catch {}
+      if (kicked) auth_.msg.textContent = `You were signed out because this account was opened on another device. Each account works on up to ${MAX_DEVICES} devices.`;
       if (pendingInvite()) auth_.tabUp?.click();
       return;
     }
@@ -3806,13 +3892,19 @@ render();
     startApp(user);
   });
 
-  startApp = (user) => {
+  startApp = async (user) => {
     if (started) return;
     started = true;
     signedOut = false;
     el.verifyPanel.hidden = true;
     me = { email: user.email || "" };
-    start(firestoreStore(db, user.uid));
+    // Just verified? Refresh the sign-in token so the database sees the verified email
+    // (access given to an email only counts for verified emails).
+    try {
+      const t = await user.getIdTokenResult?.();
+      if (t && !t.claims?.email_verified && user.emailVerified) await user.getIdToken(true);
+    } catch {}
+    start(firestoreStore(db, user.uid, user.emailVerified ? user.email : ""));
     render();
     loadRecent();
     checkPush().then((state) => { pushState = state; render(); });
