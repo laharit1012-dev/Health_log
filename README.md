@@ -128,4 +128,10 @@ The switch in the header flips between light and dark, and the choice is remembe
 
 ## Releasing an update
 
-Bump the version number in `index.html` (the `?v=` on `styles.css` and `app.js`, and the footer) and in the `firebase-config.js?v=` import at the top of `app.js`. Browsers then load the new files instead of an older saved copy, and the footer shows which version each device is running.
+Bump the version number in all of these, to the same number:
+- `version.json`
+- `APP_VERSION` at the top of `app.js`
+- `index.html`: the `?v=` on `styles.css` and `app.js`, and the footer
+- the `?v=` on the imports at the top of `app.js`
+
+Phones then load the new files instead of an older saved copy. When the app opens or comes back on screen, it compares itself with `version.json` and shows **A new version of Health Log is ready · Update now** if it's behind. **Account → Refresh app** always reloads the newest version.

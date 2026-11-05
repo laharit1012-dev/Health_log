@@ -15,9 +15,43 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=33";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=33";
-import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=33";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=34";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=34";
+import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=34";
+
+// ---------- App version and updates ----------
+// Bump APP_VERSION and version.json together when publishing an update.
+const APP_VERSION = 34;
+
+// Open the newest version: a unique address makes the phone fetch fresh files
+function reloadFresh() {
+  location.replace(location.pathname + "?refresh=" + Date.now() + location.hash);
+}
+
+// Tidy the address after a refresh
+if (new URLSearchParams(location.search).has("refresh")) {
+  history.replaceState(null, "", location.pathname + location.hash);
+}
+
+let lastUpdateCheck = 0;
+async function checkForUpdate(force = false) {
+  if (!force && Date.now() - lastUpdateCheck < 5 * 60 * 1000) return null;
+  lastUpdateCheck = Date.now();
+  try {
+    const res = await fetch("version.json?t=" + Date.now(), { cache: "no-store" });
+    const { version } = await res.json();
+    const newer = Number(version) > APP_VERSION;
+    document.getElementById("update-banner").hidden = !newer;
+    return newer;
+  } catch {
+    return null; // offline: try again later
+  }
+}
+
+document.getElementById("update-now").addEventListener("click", reloadFresh);
+document.getElementById("refresh-app").addEventListener("click", reloadFresh);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) checkForUpdate(); });
+checkForUpdate(true);
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";

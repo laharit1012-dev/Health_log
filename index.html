@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=33">
+  <link rel="stylesheet" href="styles.css?v=34">
 </head>
 <body>
   <!-- Background wallpaper: full on Today, dimmed on the other pages -->
@@ -67,6 +67,11 @@
   </header>
 
   <main>
+    <!-- Shown when a newer version of the app has been published -->
+    <aside id="update-banner" class="update-banner" role="status" hidden>
+      <span>✨ A new version of Health Log is ready.</span>
+      <button id="update-now" class="btn btn--small" type="button">Update now</button>
+    </aside>
     <!-- Home-screen install tip (hidden once installed or dismissed) -->
     <aside id="install-tip" class="install-tip" aria-label="Install the app" hidden>
       <img src="icons/icon-192.png?v=10" alt="" width="44" height="44">
@@ -591,6 +596,7 @@
         <p class="hint">Signed in as <strong id="account-email"></strong>. Read how your data is handled in the <a href="privacy.html">privacy policy</a>.</p>
       </div>
       <div class="row">
+        <button id="refresh-app" class="btn" type="button">Refresh app</button>
         <button id="sign-out" class="btn btn--ghost" type="button">Sign out</button>
         <button id="delete-start" class="btn btn--ghost btn--danger" type="button">Delete my account</button>
       </div>
@@ -635,13 +641,13 @@
   </nav>
 
   <footer class="site-footer">
-    <p>Health Log · version <span id="app-version">33</span> · <a href="privacy.html">Privacy policy</a></p>
+    <p>Health Log · version <span id="app-version">34</span> · <a href="privacy.html">Privacy policy</a></p>
   </footer>
 
   <!-- Goal celebrations -->
   <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <script type="module" src="app.js?v=33"></script>
+  <script type="module" src="app.js?v=34"></script>
 </body>
 </html>
