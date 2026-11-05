@@ -15,7 +15,7 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=20";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=21";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -384,9 +384,10 @@ function setValue(input, value) {
 const caloriesOf = (log) => log.foods.reduce((sum, f) => sum + (Number(f.calories) || 0), 0);
 
 // ---------- Pages ----------
-const ROUTES = ["today", "period", "family", "reminders", "account"];
+const ROUTES = ["today", "cycle", "family", "reminders", "account"];
 const routeFromHash = () => {
-  const r = location.hash.replace("#", "");
+  let r = location.hash.replace("#", "");
+  if (r === "period") r = "cycle"; // older links
   return ROUTES.includes(r) ? r : "today";
 };
 let route = routeFromHash();
@@ -417,9 +418,9 @@ function render() {
 
   el.signin.hidden = !signedOut || !el.verifyPanel.hidden;
   const inApp = !signedOut && !!store;
-  // Period page: women, or when viewing someone who shared their period tracker
+  // Cycle page: women, or when viewing someone who shared their cycle tracker
   const periodAvailable = viewing ? !!viewCycle : isFemale();
-  if (route === "period" && inApp && !periodAvailable && profile) {
+  if (route === "cycle" && inApp && !periodAvailable && profile) {
     route = "today";
     history.replaceState(null, "", "#today");
   }
@@ -436,12 +437,12 @@ function render() {
   el.dayBar.hidden = !on("today");
   el.summaryPanel.hidden = !on("today");
   el.panel.hidden = !on("today");
-  el.periodPanel.hidden = !on("period");
+  el.periodPanel.hidden = !on("cycle");
   el.linkPanel.hidden = !on("family") || !store?.canLink || !!blocked;
   el.accountPanel.hidden = !on("account");
   el.remPanel.hidden = !on("reminders") || !!blocked;
   if (me) el.accountEmail.textContent = me.email;
-  el.people.hidden = !(on("today") || on("period")) || links.length === 0;
+  el.people.hidden = !(on("today") || on("cycle")) || links.length === 0;
   if (signedOut || !store) return;
 
   renderPeople();
@@ -480,9 +481,9 @@ function renderLinkPanel() {
   el.shareCycleSetting.hidden = !(on && isFemale());
   if (on && isFemale()) {
     el.shareCycleState.textContent = sharing.cycle
-      ? "Period tracker: shared with people who have your code."
-      : "Period tracker: private. People with your code don't see it.";
-    el.shareCycleToggle.textContent = sharing.cycle ? "Stop sharing period tracker" : "Share period tracker too";
+      ? "Cycle tracker: shared with people who have your code."
+      : "Cycle tracker: private. People with your code don't see it.";
+    el.shareCycleToggle.textContent = sharing.cycle ? "Stop sharing cycle tracker" : "Share cycle tracker too";
   }
   el.shareStop.hidden = !el.shareConfirm.hidden;
 
@@ -819,7 +820,7 @@ function cycleInfo(cycle, refISO) {
 function renderCycle() {
   const show = !el.periodPanel.hidden && (viewing ? !!viewCycle : isFemale());
   if (!show) return;
-  const date = todayISO(); // the Period page is always about today
+  const date = todayISO(); // the Cycle page is always about today
 
   const ro = readOnly();
   const cycle = (viewing ? viewCycle : profile.cycle) || {};
@@ -1133,7 +1134,7 @@ function syncShareProfile() {
   return store.mirrorProfile(sharing.code, displayName(), cycle, profile?.goals || null).catch(() => {});
 }
 
-let shareCycleChoice = null; // her answer to "Share your period tracker too?"
+let shareCycleChoice = null; // her answer to "Share your cycle tracker too?"
 
 async function createShareCode() {
   if (shareBusy || !store?.canLink) return;
@@ -1197,8 +1198,8 @@ el.shareCycleToggle.addEventListener("click", async () => {
     await store.saveSharing(sharing.code, next);
     await syncShareProfile();
     el.shareMsg.textContent = next
-      ? "Your period tracker is now shared with people who have your code."
-      : "Your period tracker is private again. People with your code no longer see it.";
+      ? "Your cycle tracker is now shared with people who have your code."
+      : "Your cycle tracker is private again. People with your code no longer see it.";
   } catch {
     el.shareMsg.textContent = "Couldn't change that. Check your connection and try again.";
   } finally {
