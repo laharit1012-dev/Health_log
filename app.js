@@ -15,8 +15,8 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=24";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=24";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=26";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=26";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -154,7 +154,7 @@ function firestoreStore(db, uid) {
     kind: "account",
     canLink: true,
     watchProfile: (cb, onError) => watch(userRef, (d, m) => cb(d
-      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null, groups: Array.isArray(d.groups) ? d.groups : [] }
+      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null, groups: Array.isArray(d.groups) ? d.groups : [], xpDays: d.xpDays || {}, badges: d.badges || {} }
       : null, m), onError),
     watchSharing: (cb, onError) => watch(userRef, (d, m) => cb(d?.shareCode ? { code: d.shareCode, cycle: !!d.shareCycle } : null, m), onError),
     watchLinks: (cb, onError) => watch(userRef, (d, m) => cb({ people: Array.isArray(d?.links) ? d.links : [] }, m), onError),
@@ -174,6 +174,8 @@ function firestoreStore(db, uid) {
     // Groups: groups/<code> { owner, name }, groups/<code>/members/<uid> { name, days }
     uid,
     saveGroups: (groups) => mergeUser({ groups }),
+    saveXP: (xpDays) => mergeUser({ xpDays }),          // { date: xp } merged in
+    saveBadges: (badges) => mergeUser({ badges }),      // { id: date earned } merged in
     async getGroup(code) {
       try {
         const snap = await getDoc(doc(db, "groups", code));
@@ -329,7 +331,7 @@ function flush(d) {
     .then(() => (sharing?.code ? store.mirrorDay(sharing.code, log) : null))
     .then(() => {
       if (recent) recent[log.date] = log.steps || 0;
-      if (recentLogs) { recentLogs[log.date] = log; syncGroups(); }
+      if (recentLogs) { recentLogs[log.date] = log; syncGroups(); updateProgress(log.date); }
       if (drafts[d] === log) delete drafts[d];
     })
     .catch((err) => handleWriteError(err))
@@ -408,6 +410,9 @@ const el = {
   watchYes: $("watch-yes"), watchNo: $("watch-no"), watchMsg: $("watch-msg"),
   cyclePhaseBox: $("cycle-phase"), cyclePhaseName: $("cycle-phase-name"), cyclePhaseNote: $("cycle-phase-note"),
   remCycle: $("rem-cycle"), remCycleList: $("rem-cycle-list"),
+  levelCard: $("level-card"), levelNum: $("level-num"), levelName: $("level-name"), levelBar: $("level-bar"),
+  levelHint: $("level-hint"), todayRing: $("today-ring"),
+  badgesPanel: $("badges-panel"), badgesCount: $("badges-count"), badgeGrid: $("badge-grid"),
   tabbar: $("tabbar"), tabPeriod: $("tab-period"), periodPanel: $("period-panel"),
   installTip: $("install-tip"), installText: $("install-text"), installBtn: $("install-btn"), installClose: $("install-close"),
   linkForm: $("link-form"), linkCode: $("link-code"), linkMsg: $("link-msg"), linkList: $("link-list"),
@@ -482,6 +487,7 @@ function render() {
   }
   el.dayBar.hidden = !on("today");
   el.summaryPanel.hidden = !on("today");
+  el.badgesPanel.hidden = !on("today") || !!viewing;
   el.panel.hidden = !on("today");
   el.periodPanel.hidden = !on("cycle");
   el.linkPanel.hidden = !on("family") || !store?.canLink || !!blocked;
@@ -507,6 +513,7 @@ function render() {
   renderReminders();
   renderCycle();
   renderGroups();
+  renderProgress();
   renderPanel();
   renderLinkPanel();
   setStatus();
@@ -725,6 +732,7 @@ el.goalsForm.addEventListener("submit", async (e) => {
     await store.saveProfile({ goals });
     await syncShareProfile();
     syncGroups();
+    updateProgress(null, { quiet: true });
   } catch (err) {
     handleWriteError(err);
     render();
@@ -733,11 +741,21 @@ el.goalsForm.addEventListener("submit", async (e) => {
 
 // ---------- Celebrations ----------
 let toastTimer = null;
+const toastQueue = [];
 function showToast(text) {
-  el.toast.textContent = text;
+  toastQueue.push(text);
+  if (toastQueue.length === 1) nextToast();
+}
+function nextToast() {
+  if (!toastQueue.length) return;
+  el.toast.textContent = toastQueue[0];
   el.toast.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.toast.hidden = true; }, 3200);
+  toastTimer = setTimeout(() => {
+    el.toast.hidden = true;
+    toastQueue.shift();
+    if (toastQueue.length) setTimeout(nextToast, 250);
+  }, 2800);
 }
 
 function celebrate(keys, log) {
@@ -800,6 +818,7 @@ async function loadRecent() {
     recentLogs = Object.fromEntries(days.map((d) => [d.date, d]));
     render();
     syncGroups();
+    initProgress();
   } catch { recent = null; }
 }
 
@@ -1424,7 +1443,7 @@ function watchDay() {
 
 function start(s) {
   store = s;
-  store.watchProfile((p) => { profile = p; render(); }, () => {});
+  store.watchProfile((p) => { profile = p; render(); initProgress(); }, () => {});
   if (store.canLink) {
     store.watchSharing((d) => { sharing = d?.code ? d : null; render(); }, () => {});
     store.watchLinks((d) => {
@@ -1717,6 +1736,177 @@ async function forgetThisDevice() {
   } catch {}
 }
 
+// ---------- XP, levels and badges ----------
+const LEVELS = [
+  [0, "Starter"], [100, "Walker"], [300, "Mover"], [600, "Hiker"], [1000, "Runner"],
+  [1500, "Climber"], [2100, "Athlete"], [2800, "Champion"], [3600, "Hero"], [4500, "Legend"],
+];
+
+function levelFor(xp) {
+  let i = 0;
+  while (i + 1 < LEVELS.length && xp >= LEVELS[i + 1][0]) i++;
+  return { level: i + 1, name: LEVELS[i][1], floor: LEVELS[i][0], next: LEVELS[i + 1]?.[0] ?? null };
+}
+
+// XP for one day: +10 for logging anything, +20 per goal reached, +10 for food, +30 for a perfect day
+function dayXP(log, g) {
+  const n = normalize(log, log?.date);
+  const any = n.steps || n.water || n.foods.length || n.workouts.length || n.sleep.bed || n.sleep.wake;
+  if (!any) return 0;
+  const m = metFlags(n, g);
+  const goalsHit = [m.steps, m.water, m.sleep, m.workout].filter(Boolean).length;
+  return 10 + 20 * goalsHit + (n.foods.length ? 10 : 0) + (goalsHit === 4 ? 30 : 0);
+}
+
+const totalXP = () => Object.values(profile?.xpDays || {}).reduce((a, b) => a + (Number(b) || 0), 0);
+
+const BADGES = [
+  { id: "first", glyph: "1st", name: "First step", how: "Log anything" },
+  { id: "tenk", glyph: "10K", name: "10K club", how: "10,000 steps in a day" },
+  { id: "perfect", glyph: "★", name: "Perfect day", how: "All 4 goals in one day" },
+  { id: "streak3", glyph: "3d", name: "On a roll", how: "3-day step streak" },
+  { id: "streak7", glyph: "7d", name: "Week warrior", how: "7-day step streak" },
+  { id: "streak30", glyph: "30d", name: "Unstoppable", how: "30-day step streak" },
+  { id: "hydrate", glyph: "H₂O", name: "Hydration hero", how: "Water goal on 7 days" },
+  { id: "workout5", glyph: "5×", name: "Workout warrior", how: "5 workouts in 7 days" },
+  { id: "sleep5", glyph: "Zz", name: "Well rested", how: "Sleep goal 5 nights in a row" },
+  { id: "marathon", glyph: "42K", name: "Marathon week", how: "55,000 steps in 7 days" },
+  { id: "team", glyph: "+", name: "Team player", how: "Join or create a group" },
+  { id: "level5", glyph: "L5", name: "Runner rank", how: "Reach Level 5" },
+];
+
+// All your days we know about (last 60 days plus unsaved edits)
+function knownDays() {
+  const days = { ...(recentLogs || {}) };
+  for (const [d, log] of Object.entries(drafts)) days[d] = log;
+  return Object.keys(days).sort().map((d) => normalize({ ...days[d], date: d }, d));
+}
+
+function earnedNow() {
+  const g = goalsFor(profile?.goals);
+  const days = knownDays();
+  const byDate = Object.fromEntries(days.map((d) => [d.date, d]));
+  const met = (d) => metFlags(d, g);
+  const longestRun = (test) => {
+    let best = 0, run = 0, prev = null;
+    for (const d of days) {
+      const ok = test(d);
+      run = ok && prev && shiftDate(prev, 1) === d.date ? run + 1 : ok ? 1 : 0;
+      best = Math.max(best, run);
+      prev = d.date;
+    }
+    return best;
+  };
+  const windowSum = (fn) => {
+    let best = 0;
+    for (const d of days) {
+      let sum = 0;
+      for (let i = 0; i < 7; i++) { const x = byDate[shiftDate(d.date, i)]; if (x) sum += fn(x); }
+      best = Math.max(best, sum);
+    }
+    return best;
+  };
+  const stepRun = longestRun((d) => met(d).steps);
+  const out = new Set();
+  if (days.some((d) => dayXP(d, g) > 0)) out.add("first");
+  if (days.some((d) => (d.steps || 0) >= 10000)) out.add("tenk");
+  if (days.some((d) => Object.values(met(d)).every(Boolean))) out.add("perfect");
+  if (stepRun >= 3) out.add("streak3");
+  if (stepRun >= 7) out.add("streak7");
+  if (stepRun >= 30) out.add("streak30");
+  if (days.filter((d) => met(d).water).length >= 7) out.add("hydrate");
+  if (windowSum((d) => d.workouts.length) >= 5) out.add("workout5");
+  if (longestRun((d) => met(d).sleep) >= 5) out.add("sleep5");
+  if (windowSum((d) => d.steps || 0) >= 55000) out.add("marathon");
+  if ((profile?.groups || []).length) out.add("team");
+  if (levelFor(totalXP()).level >= 5) out.add("level5");
+  return out;
+}
+
+// First full calculation once both your profile and recent days have loaded
+let progressReady = false;
+function initProgress() {
+  if (progressReady || !profile || !recentLogs) return;
+  progressReady = true;
+  updateProgress(null, { quiet: true });
+}
+
+// Recalculate XP (for one day, or all known days) and award new badges
+let progressBusy = false;
+async function updateProgress(onlyDate, { quiet = false } = {}) {
+  if (!store?.saveXP || !recentLogs || !profile || progressBusy) return;
+  progressBusy = true;
+  try {
+    const g = goalsFor(profile.goals);
+    const before = levelFor(totalXP());
+    const changes = {};
+    for (const d of knownDays()) {
+      if (onlyDate && d.date !== onlyDate) continue;
+      const xp = dayXP(d, g);
+      if ((profile.xpDays?.[d.date] || 0) !== xp) changes[d.date] = xp;
+    }
+    if (Object.keys(changes).length) {
+      profile = { ...profile, xpDays: { ...(profile.xpDays || {}), ...changes } };
+      await store.saveXP(changes).catch(() => {});
+    }
+    const after = levelFor(totalXP());
+    if (!quiet && after.level > before.level) {
+      showToast(`Level up! You're now Level ${after.level} · ${after.name}`);
+      burstConfetti();
+    }
+    const have = profile.badges || {};
+    const fresh = [...earnedNow()].filter((id) => !have[id]);
+    if (fresh.length) {
+      const stamp = Object.fromEntries(fresh.map((id) => [id, todayISO()]));
+      profile = { ...profile, badges: { ...have, ...stamp } };
+      await store.saveBadges(stamp).catch(() => {});
+      for (const id of fresh) showToast(`Badge unlocked: ${BADGES.find((b) => b.id === id).name}!`);
+      burstConfetti();
+    }
+    render();
+  } finally {
+    progressBusy = false;
+  }
+}
+
+function renderProgress() {
+  const show = !viewing && !el.summaryPanel.hidden && !!profile;
+  el.levelCard.hidden = !show;
+  if (show) {
+    const xp = totalXP();
+    const lv = levelFor(xp);
+    const todayXP = dayXP(logNow(), goalsNow());
+    el.levelNum.textContent = lv.level;
+    el.levelName.textContent = `Level ${lv.level} · ${lv.name}`;
+    el.levelBar.style.width = lv.next ? Math.round(((xp - lv.floor) / (lv.next - lv.floor)) * 100) + "%" : "100%";
+    el.levelHint.textContent = (lv.next ? `${fmt(lv.next - xp)} XP to Level ${lv.level + 1}` : `${fmt(xp)} XP · top level!`) +
+      (date === todayISO() ? ` · +${todayXP} XP today` : "");
+    const sm = daySummary(logNow(), goalsNow());
+    el.todayRing.replaceChildren(rateRing(activityRate(sm), date === todayISO() ? "today" : "this day"));
+  }
+
+  if (el.badgesPanel.hidden) return;
+  const have = profile?.badges || {};
+  el.badgesCount.textContent = `${Object.keys(have).filter((id) => BADGES.some((b) => b.id === id)).length} of ${BADGES.length}`;
+  el.badgeGrid.replaceChildren();
+  for (const b of BADGES) {
+    const li = document.createElement("li");
+    const got = !!have[b.id];
+    li.className = "badge-tile" + (got ? "" : " is-locked");
+    const medal = document.createElement("span");
+    medal.className = "medal";
+    medal.setAttribute("aria-hidden", "true");
+    medal.textContent = b.glyph;
+    const name = document.createElement("strong");
+    name.textContent = b.name;
+    const how = document.createElement("small");
+    how.textContent = got ? `Earned ${shortDate(have[b.id])}` : b.how;
+    li.setAttribute("aria-label", `${b.name}: ${got ? "earned" : "locked. " + b.how}`);
+    li.append(medal, name, how);
+    el.badgeGrid.append(li);
+  }
+}
+
 // ---------- Groups ----------
 // Each member keeps a small summary of their last 7 days in every group they're in.
 // Shared: steps, workout minutes, sleep hours, food item count and calories, and goals.
@@ -1746,7 +1936,7 @@ function memberData() {
     const log = drafts[d] || recentLogs?.[d] || (d === date && dayLog ? dayLog : null);
     if (log) days[d] = daySummary({ ...log, date: d }, g);
   }
-  return { name: displayName() || "Member", updatedAt: Date.now(), days };
+  return { name: displayName() || "Member", updatedAt: Date.now(), days, level: levelFor(totalXP()).level };
 }
 
 let groupSyncTimer = null;
@@ -1929,7 +2119,7 @@ function renderGroups() {
     name.textContent = (m.name || "Member") + (me ? " (you)" : "");
     const place = document.createElement("span");
     place.className = "member__place";
-    place.textContent = `${ordinal(ranks[i])} of ${sorted.length} overall` + (m.id === groupInfo?.owner ? " · group creator" : "");
+    place.textContent = `${ordinal(ranks[i])} of ${sorted.length} overall` + (m.level ? ` · Level ${m.level}` : "") + (m.id === groupInfo?.owner ? " · group creator" : "");
     const st = statusFor(sm);
     const badge = document.createElement("span");
     badge.className = "badge " + st.cls;
@@ -1994,6 +2184,7 @@ async function addGroupToList(code, name) {
   const groups = [...(profile?.groups || []).filter((g) => g.code !== code), { code, name }];
   profile = { ...(profile || {}), groups };
   await store.saveGroups(groups);
+  updateProgress(null, { quiet: true });
 }
 
 async function removeGroupFromList(code) {
