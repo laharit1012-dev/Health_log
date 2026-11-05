@@ -42,3 +42,7 @@ The switch in the header flips between light and dark, and the choice is remembe
 - `app.js`: sign-in, logging, saving and share codes
 - `firebase-config.js`: Firebase project settings
 - `firestore.rules`: database security rules (paste into Firebase console → Firestore → Rules)
+
+## Releasing an update
+
+Bump the version number in `index.html` (the `?v=` on `styles.css` and `app.js`, and the footer) and in the `firebase-config.js?v=` import at the top of `app.js`. Browsers then load the new files instead of an older saved copy, and the footer shows which version each device is running.

@@ -739,3 +739,14 @@ main {
   flex-wrap: wrap;
 }
 .gender-prompt span { flex: 1 1 14rem; }
+
+/* ---------- Footer ---------- */
+.site-footer {
+  padding-block: 0 2rem;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.site-footer p { margin: 0; }
