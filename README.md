@@ -1,6 +1,8 @@
 # Health Log
 
-A private daily health log for family and friends. Everyone signs up with their own email and password and sees only their own log.
+A private daily health log for family and friends.
+
+**Open the app:** https://laharit1012-dev.github.io/Health_log/ Everyone signs up with their own email and password and sees only their own log.
 
 Each day you can log:
 - **Steps**: progress toward 10,000
