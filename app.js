@@ -15,15 +15,34 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=37";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=37";
-import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=37";
-import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=37";
-import { SHOP } from "./shop.js?v=37";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=38";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=38";
+import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=38";
+import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=38";
+import { SHOP } from "./shop.js?v=38";
+
+// ---------- Challenge invites ----------
+// A link like ?invite=christmas-2026&group=K7QF-9XMA-2PDW is kept until the person signs in,
+// then they join the inviter's group and see that challenge in the Shop.
+const INVITE_KEY = "health-log-invite";
+(() => {
+  const q = new URLSearchParams(location.search);
+  const ch = q.get("invite");
+  if (!ch) return;
+  try { localStorage.setItem(INVITE_KEY, JSON.stringify({ challenge: ch, group: q.get("group") || "", at: Date.now() })); } catch {}
+  history.replaceState(null, "", location.pathname + location.hash);
+})();
+function pendingInvite() {
+  try {
+    const v = JSON.parse(localStorage.getItem(INVITE_KEY) || "null");
+    return v && Date.now() - v.at < 30 * 86400000 ? v : null;
+  } catch { return null; }
+}
+function clearInvite() { try { localStorage.removeItem(INVITE_KEY); } catch {} }
 
 // ---------- App version and updates ----------
 // Bump APP_VERSION and version.json together when publishing an update.
-const APP_VERSION = 37;
+const APP_VERSION = 38;
 
 // Open the newest version: a unique address makes the phone fetch fresh files
 function reloadFresh() {
@@ -222,7 +241,7 @@ function firestoreStore(db, uid) {
         throw err;
       }
     },
-    createGroup: (code, name) => setDoc(doc(db, "groups", code), { owner: uid, name, createdAt: Date.now() }),
+    createGroup: (code, name, challenge = null) => setDoc(doc(db, "groups", code), { owner: uid, name, createdAt: Date.now(), ...(challenge ? { challenge } : {}) }),
     saveMember: (code, data) => setDoc(doc(db, "groups", code, "members", uid), data),
     leaveGroup: (code) => deleteDoc(doc(db, "groups", code, "members", uid)),
     removeMember: (code, memberUid) => deleteDoc(doc(db, "groups", code, "members", memberUid)),
@@ -286,7 +305,12 @@ function firestoreStore(db, uid) {
     // Paid access: access/<uid> { challenge | null, all, start, end, endAt } is written only by admins
     watchAccess: (cb, onError) => watch(doc(db, "access", uid), cb, onError),
     // directory/<uid> { email, name } lets an admin find someone by email
-    saveDirectory: (email, name) => setDoc(doc(db, "directory", uid), { email: (email || "").toLowerCase(), name: name || "", updatedAt: Date.now() }),
+    saveDirectory: (email, name, extra = {}) => setDoc(doc(db, "directory", uid),
+      { email: (email || "").toLowerCase(), name: name || "", updatedAt: Date.now(), ...extra }, { merge: true }),
+    async listDirectory() {
+      const snap = await getDocs(collection(db, "directory"));
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
     deleteDirectory: () => deleteDoc(doc(db, "directory", uid)),
     async isAdmin() {
       try { return (await getDoc(doc(db, "admins", uid))).exists(); } catch { return false; }
@@ -501,7 +525,8 @@ const el = {
   adminPanel: $("admin-panel"), adminLink: $("admin-link"), remLink: document.querySelector('#account-panel a[href="#reminders"]'),
   adminFind: $("admin-find"), adminEmail: $("admin-email"), adminPerson: $("admin-person"), adminPersonName: $("admin-person-name"),
   adminPass: $("admin-pass"), adminStart: $("admin-start"), adminEnd: $("admin-end"), adminGrant: $("admin-grant"),
-  adminMsg: $("admin-msg"), adminList: $("admin-list"),
+  adminMsg: $("admin-msg"), adminList: $("admin-list"), adminBoardCh: $("admin-board-ch"), adminBoard: $("admin-board"),
+  fab: $("log-fab"), logClose: $("log-close"), backdrop: $("sheet-backdrop"), inviteNote: $("invite-note"),
   groupChallenges: $("group-challenges"),
   tabbar: $("tabbar"), tabPeriod: $("tab-period"), periodPanel: $("period-panel"),
   installTip: $("install-tip"), installText: $("install-text"), installBtn: $("install-btn"), installClose: $("install-close"),
@@ -539,6 +564,7 @@ function goTo(r) {
 
 window.addEventListener("hashchange", () => {
   route = routeFromHash();
+  logSheet = false;
   if (route !== "family" && openGroup) closeGroupView();
   if (route !== "workouts") playing = null;
   render();
@@ -547,6 +573,7 @@ window.addEventListener("hashchange", () => {
 
 // ---------- Rendering ----------
 let signedOut = false;
+let logSheet = false;      // the log sheet (opened with +) is showing
 
 function render() {
   el.dayTitle.textContent = dayTitle(date);
@@ -560,6 +587,10 @@ function render() {
   if (route === "account") el.who.setAttribute("aria-current", "page"); else el.who.removeAttribute("aria-current");
 
   el.signin.hidden = !signedOut || !el.verifyPanel.hidden;
+  const inv = pendingInvite();
+  const invC = inv && CHALLENGES.find((c) => c.id === inv.challenge);
+  el.inviteNote.hidden = !invC;
+  if (invC) el.inviteNote.textContent = `${invC.emoji} You're invited to the ${invC.name}! Create an account (or sign in) to join your friends.`;
   const inApp = !signedOut && !!store;
   // Cycle page: women, or when viewing someone who shared their cycle tracker
   const periodAvailable = viewing ? !!viewCycle : isFemale();
@@ -594,7 +625,15 @@ function render() {
   el.dayBar.hidden = !on("today");
   el.summaryPanel.hidden = !on("today");
   el.badgesPanel.hidden = !on("today") || !!viewing;
-  el.panel.hidden = !on("today");
+  // Your own log opens as a sheet from the + button; someone else's log shows in the page
+  const sheet = on("today") && !viewing && logSheet;
+  el.panel.hidden = !on("today") || (!viewing && !logSheet);
+  el.panel.classList.toggle("is-sheet", sheet);
+  el.panel.setAttribute("role", sheet ? "dialog" : "region");
+  el.logClose.hidden = !!viewing;
+  el.fab.hidden = !on("today") || !!viewing || sheet;
+  el.backdrop.hidden = !sheet;
+  document.body.classList.toggle("sheet-open", sheet);
   el.periodPanel.hidden = !on("cycle");
   el.workoutsPanel.hidden = !on("workouts");
   el.challengesPanel.hidden = !on("challenges");
@@ -1530,6 +1569,26 @@ el.prev.addEventListener("click", () => setDate(shiftDate(date, -1)));
 el.next.addEventListener("click", () => setDate(shiftDate(date, 1)));
 el.dayInput.addEventListener("change", () => setDate(el.dayInput.value));
 
+// ---------- The log sheet (+ button on Today) ----------
+function openLog() {
+  if (viewing || !store) return;
+  logSheet = true;
+  render();
+  el.panel.scrollTop = 0;
+  el.logClose.focus({ preventScroll: true });
+}
+function closeLog() {
+  if (!logSheet) return;
+  logSheet = false;
+  render();
+  el.fab.focus({ preventScroll: true });
+}
+el.fab.addEventListener("click", openLog);
+el.logClose.addEventListener("click", closeLog);
+el.backdrop.addEventListener("click", closeLog);
+el.summary.addEventListener("click", () => { if (!viewing) openLog(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeLog(); });
+
 // ---------- Subscriptions ----------
 function onStoreError(err) {
   clearTimeout(loadTimer);
@@ -1572,6 +1631,7 @@ function start(s) {
     profile = p;
     render();
     initProgress();
+    processInvite();
     // Keep the admin's search list current (email + name only)
     if (store.saveDirectory && me?.email && (!listed || p?.name !== listed)) {
       listed = p?.name || "";
@@ -1579,12 +1639,13 @@ function start(s) {
     }
   }, () => {});
   if (store.watchAccess) {
-    store.watchAccess((d) => { accessDoc = d; accessKnown = true; accessOpen = false; render(); }, (err) => {
+    store.watchAccess((d) => { accessDoc = d; accessKnown = true; accessOpen = false; render(); processInvite(); }, (err) => {
       // Rules not updated yet (or another problem): never lock people out because of it
       accessKnown = true;
       accessOpen = true;
       if (err?.code !== "permission-denied") console.warn("Access check failed", err);
       render();
+      processInvite();
     });
     store.isAdmin().then((v) => { isAdmin = v; adminChecked = true; render(); });
   }
@@ -2456,6 +2517,12 @@ function dayLogFor(d) {
   return raw ? normalize({ ...raw, date: d }, d) : null;
 }
 
+// Points for one day (0 to 100), from the log when it's loaded, otherwise from the saved totals
+function dayPoints(d) {
+  const log = dayLogFor(d);
+  return log ? dayXP(log, goalsFor(profile?.goals)) : Number(profile?.xpDays?.[d]) || 0;
+}
+
 function challengeDayOK(rule, d) {
   const g = goalsFor(profile?.goals);
   const log = dayLogFor(d);
@@ -2483,24 +2550,27 @@ function challengeStatus(c) {
   const mine = myChallenge(c.id);
   if (c.type === "streak") {
     if (!mine) return { joined: false, count: 0, target: c.length };
-    let count = 0, broken = false;
+    let count = 0, broken = false, points = 0;
     for (let d = mine.joined; d < today && count < c.length; d = shiftDate(d, 1)) {
-      if (challengeDayOK(c.rule, d)) count++;
+      if (challengeDayOK(c.rule, d)) { count++; points += dayPoints(d); }
       else { broken = true; break; }
     }
-    if (!broken && count < c.length && challengeDayOK(c.rule, today)) count++;
-    return { joined: true, count, target: c.length, broken: broken && count < c.length, done: count >= c.length };
+    if (!broken && count < c.length && challengeDayOK(c.rule, today)) { count++; points += dayPoints(today); }
+    return { joined: true, count, points, target: c.length, broken: broken && count < c.length, done: count >= c.length };
   }
   const upcoming = today < c.start;
   const ended = today > c.end;
-  let count = 0;
+  let count = 0, points = 0;
   if (!upcoming) {
     const last = ended ? c.end : today;
-    for (let d = c.start; d <= last; d = shiftDate(d, 1)) if (challengeDayOK(c.rule, d)) count++;
+    for (let d = c.start; d <= last; d = shiftDate(d, 1)) {
+      if (challengeDayOK(c.rule, d)) count++;
+      points += dayPoints(d);
+    }
   }
   const daysLeft = ended ? 0 : diffDays(upcoming ? c.start : today, c.end) + 1;
   const done = count >= c.target;
-  return { joined: !!mine, count, target: c.target, upcoming, ended, daysLeft, done, possible: done || count + daysLeft >= c.target };
+  return { joined: !!mine, count, points, target: c.target, upcoming, ended, daysLeft, done, possible: done || count + daysLeft >= c.target };
 }
 
 async function setChallenge(id, join) {
@@ -2577,6 +2647,11 @@ function renderChallenges() {
         row.append(label, bar);
         el.challengeCard.append(row);
       }
+      if (!blocked) {
+        const inv = inviteButton(active[0]);
+        inv.textContent = "👥 Invite friends to compete";
+        el.challengeCard.append(inv);
+      }
     }
   }
 
@@ -2591,7 +2666,7 @@ function renderChallenges() {
   el.challengeList.replaceChildren();
   const order = [...CHALLENGES].sort((a, b) => {
     const sa = challengeStatus(a), sb = challengeStatus(b);
-    const rank = (c, s) => (pass?.id === c.id && state === "active" ? -1 : s.ended ? 2 : s.upcoming ? 1 : 0);
+    const rank = (c, s) => (inviteFor?.challenge === c.id ? -2 : pass?.id === c.id && state === "active" ? -1 : s.ended ? 2 : s.upcoming ? 1 : 0);
     return rank(a, sa) - rank(b, sb);
   });
   for (const c of order) {
@@ -2599,7 +2674,7 @@ function renderChallenges() {
     const mineNow = !free && state === "active" && pass?.id === c.id;
     const isLockedCard = !free && !mineNow;
     const card = document.createElement("article");
-    card.className = "challenge" + (st.joined ? " is-joined" : "") + (isLockedCard ? " is-locked" : "");
+    card.className = "challenge" + (st.joined ? " is-joined" : "") + (isLockedCard ? " is-locked" : "") + (inviteFor?.challenge === c.id ? " is-invited" : "");
     const top = document.createElement("div");
     top.className = "challenge__top";
     const emoji = document.createElement("span"); emoji.className = "challenge__emoji"; emoji.textContent = c.emoji; emoji.setAttribute("aria-hidden", "true");
@@ -2611,6 +2686,12 @@ function renderChallenges() {
     const about = document.createElement("p"); about.textContent = c.about;
     const rule = document.createElement("p"); rule.textContent = `A day counts when you reach: ${RULE_TEXT[c.rule]}.`;
     card.append(top, about, rule);
+    if (SHOP.prize && !st.ended) {
+      const prize = document.createElement("p");
+      prize.className = "challenge__prize";
+      prize.textContent = `🏆 ${SHOP.prize}`;
+      card.append(prize);
+    }
 
     if (isLockedCard) {
       // Locked: price and a way to pay
@@ -2653,11 +2734,12 @@ function renderChallenges() {
     }
     const status = document.createElement("div");
     status.className = "challenge__status" + (st.done ? " is-done" : st.broken ? " is-broken" : "");
-    status.textContent = challengeLine(c, st);
+    status.textContent = challengeLine(c, st) + (st.joined && !st.upcoming ? ` · ${fmt(st.points || 0)} points` : "");
     const meter = document.createElement("div"); meter.className = "meter"; meter.setAttribute("aria-hidden", "true");
     const fill = document.createElement("span"); fill.style.width = Math.min(100, (st.count / st.target) * 100) + "%";
     meter.append(fill);
     const actions = document.createElement("div"); actions.className = "row";
+    if (st.joined && !st.ended && !blocked) actions.append(inviteButton(c));
     if (free && !st.joined && !st.ended) {
       const b = document.createElement("button"); b.type = "button"; b.className = "btn btn--small"; b.textContent = "Join";
       b.addEventListener("click", () => setChallenge(c.id, true));
@@ -2679,11 +2761,91 @@ function renderChallenges() {
   }
 }
 
+// ---------- Inviting friends to a challenge ----------
+// Each challenge you invite people to gets its own group, so you can see who's winning.
+function inviteButton(c) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "btn btn--ghost btn--small";
+  b.textContent = "👥 Invite friends";
+  b.addEventListener("click", () => inviteFriends(c));
+  return b;
+}
+
+async function inviteFriends(c) {
+  if (!store?.createGroup || blocked) return;
+  try {
+    let grp = (profile?.groups || []).find((g) => g.challenge === c.id);
+    if (!grp) {
+      if ((profile?.groups || []).length >= 10) { showToast("You're in 10 groups already. Leave one to invite friends.", "info"); return; }
+      const code = newShareCode();
+      const name = `${displayName() || "My"}'s ${c.name}`;
+      await store.createGroup(code, name, c.id);
+      await store.saveMember(code, memberData());
+      await addGroupToList(code, name, c.id);
+      grp = { code, name };
+    }
+    const url = `${appUrl()}?invite=${encodeURIComponent(c.id)}&group=${encodeURIComponent(grp.code)}`;
+    const text = `Join me in the ${c.name} ${c.emoji} on Health Log!${SHOP.prize ? " " + SHOP.prize + "." : ""}`;
+    if (navigator.share) {
+      try { await navigator.share({ title: c.name, text, url }); return; }
+      catch (err) { if (err?.name === "AbortError") return; }
+    }
+    await navigator.clipboard.writeText(`${text} ${url}`);
+    showToast("Invite link copied. Paste it in WhatsApp or anywhere.", "info");
+  } catch {
+    showToast("Couldn't make the invite link. Check your connection and try again.", "info");
+  }
+}
+
+// Someone opened an invite link: join the inviter's group, then join or unlock the challenge
+let inviteFor = null;      // { challenge, group } shown at the top of the Shop
+let inviteBusy = false;
+async function processInvite() {
+  const inv = pendingInvite();
+  if (!inv || inviteBusy || !store?.getGroup || !profile || !accessKnown) return;
+  const c = CHALLENGES.find((x) => x.id === inv.challenge);
+  if (!c) { clearInvite(); return; }
+  inviteBusy = true;
+  let groupName = "";
+  try {
+    const code = normalizeCode(inv.group || "");
+    const already = code && (profile.groups || []).find((g) => g.code === code);
+    if (already) groupName = already.name;
+    else if (code && (profile.groups || []).length < 10) {
+      const info = await store.getGroup(code);
+      if (info) {
+        await store.saveMember(code, memberData());
+        await addGroupToList(code, info.name || "Group", info.challenge || null);
+        groupName = info.name || "";
+        store.saveDirectory?.(me?.email, displayName(), { invitedBy: groupName }).catch(() => {});
+      }
+    }
+  } catch {}
+  clearInvite();
+  inviteBusy = false;
+  if (freeJoin()) {
+    if (!myChallenge(c.id)) await setChallenge(c.id, true);
+    showToast(groupName ? `You're in ${groupName}! Let the competition begin ${c.emoji}` : `You joined the ${c.name}! ${c.emoji}`, "goal");
+  } else if (accessNow() === "active" && passChallenge()?.id === c.id) {
+    if (groupName) showToast(`You're in ${groupName}! ${c.emoji}`, "goal");
+  } else {
+    inviteFor = { challenge: c.id, group: groupName };
+    goTo("challenges");
+  }
+  render();
+}
+
 // The message at the top of the Shop
 function renderAccessNote(state, pass) {
   el.accessNote.replaceChildren();
   let title = "", text = "";
-  if (state === "none") {
+  const invited = inviteFor && CHALLENGES.find((c) => c.id === inviteFor.challenge);
+  if (invited && !freeJoin() && !(state === "active" && pass?.id === invited.id)) {
+    title = `You're invited to the ${invited.name} ${invited.emoji}`;
+    text = (inviteFor.group ? `You're already in ${inviteFor.group}. ` : "") +
+      `Pay for the ${invited.name} below to start logging and compete with your friends. ${SHOP.prize ? SHOP.prize + "!" : ""}`;
+  } else if (state === "none") {
     title = "Pick your challenge";
     text = "Your account is ready. Choose a challenge below and pay to unlock the app for its dates: logging, points, streaks, the cycle tracker and groups are all included.";
   } else if (state === "expired") {
@@ -2709,14 +2871,14 @@ function renderGroupChallenges() {
     const box = document.createElement("div");
     box.className = "gch";
     const h = document.createElement("h4");
-    const inIt = groupMembers.filter((m) => m.ch?.[id]).sort((a, b) => (b.ch[id].c || 0) - (a.ch[id].c || 0));
+    const inIt = groupMembers.filter((m) => m.ch?.[id]).sort((a, b) => (b.ch[id].p || 0) - (a.ch[id].p || 0) || (b.ch[id].c || 0) - (a.ch[id].c || 0));
     h.textContent = `${c.emoji} ${c.name} · ${inIt.length} of ${groupMembers.length} taking part`;
     const ol = document.createElement("ol");
     inIt.forEach((m, i) => {
       const li = document.createElement("li");
-      const r = document.createElement("span"); r.textContent = `${i + 1}.`;
+      const r = document.createElement("span"); r.textContent = i === 0 && (m.ch[id].p || 0) > 0 ? "🥇" : `${i + 1}.`;
       const n = document.createElement("span"); n.textContent = (m.name || "Member") + (m.id === store.uid ? " (you)" : "");
-      const v = document.createElement("span"); v.textContent = m.ch[id].done ? "Done! 🎉" : `${m.ch[id].c}/${m.ch[id].t}`;
+      const v = document.createElement("span"); v.textContent = `${fmt(m.ch[id].p || 0)} pts · ${m.ch[id].done ? "done 🎉" : `${m.ch[id].c}/${m.ch[id].t} days`}`;
       const meter = document.createElement("div"); meter.className = "meter";
       const fill = document.createElement("span"); fill.style.width = Math.min(100, ((m.ch[id].c || 0) / (m.ch[id].t || 1)) * 100) + "%";
       meter.append(fill);
@@ -2768,6 +2930,7 @@ function adminSay(text) {
 }
 
 function passName(a) {
+  if (a.prize) return "🏆 Prize: free access";
   if (a.all) return "⭐ All access";
   const c = CHALLENGES.find((x) => x.id === a.challenge);
   return c ? `${c.emoji} ${c.name}` : "Challenge";
@@ -2791,7 +2954,11 @@ function renderAdmin() {
     }
     el.adminPass.add(new Option("⭐ All access (family and friends, free)", "all"));
   }
+  if (!el.adminBoardCh.options.length) {
+    for (const c of CHALLENGES) el.adminBoardCh.add(new Option(`${c.emoji} ${c.name}`, c.id));
+  }
   if (adminRows === null) { loadAdminList(); return; }
+  renderBoard();
   el.adminList.replaceChildren();
   const rows = [...adminRows].sort((a, b) => (b.grantedAt || 0) - (a.grantedAt || 0));
   if (!rows.length) {
@@ -2828,6 +2995,63 @@ function renderAdmin() {
     el.adminList.append(li);
   }
 }
+
+// Leaderboard for the prize: everyone taking part in a challenge, most points first
+let adminDir = null;
+let prizeArmed = null;
+async function loadDirectory() {
+  try { adminDir = await store.listDirectory(); }
+  catch { adminDir = []; adminSay("Couldn't load the leaderboard. Check that the new database rules are pasted in."); }
+  render();
+}
+
+function renderBoard() {
+  if (adminDir === null) { adminDir = []; loadDirectory(); return; }
+  const id = el.adminBoardCh.value;
+  const c = CHALLENGES.find((x) => x.id === id);
+  const rows = adminDir.filter((d) => d.ch?.[id]).sort((a, b) => (b.ch[id].p || 0) - (a.ch[id].p || 0)).slice(0, 10);
+  el.adminBoard.replaceChildren();
+  if (!rows.length) {
+    const li = document.createElement("li");
+    li.className = "hint";
+    li.textContent = "Nobody has points in this challenge yet.";
+    el.adminBoard.append(li);
+    return;
+  }
+  rows.forEach((d, i) => {
+    const li = document.createElement("li");
+    li.className = "link-row";
+    const info = document.createElement("div");
+    info.className = "admin-row";
+    const n = document.createElement("strong"); n.textContent = `${i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1 + "."} ${d.name || d.email}`;
+    const e = document.createElement("small"); e.textContent = d.email || "";
+    const v = document.createElement("small");
+    v.textContent = `${fmt(d.ch[id].p || 0)} points · ${d.ch[id].c}/${d.ch[id].t} days` + (d.invitedBy ? ` · invited via ${d.invitedBy}` : "");
+    info.append(n, e, v);
+    const give = document.createElement("button");
+    give.type = "button";
+    give.className = "btn btn--small";
+    give.textContent = prizeArmed === d.id ? "Tap again to confirm" : "🏆 Give prize";
+    give.addEventListener("click", async () => {
+      if (prizeArmed !== d.id) { prizeArmed = d.id; render(); return; }
+      prizeArmed = null;
+      // 1 month free: 30 days, added after any access they still have
+      const current = (adminRows || []).find((r) => r.id === d.id);
+      const today = todayISO();
+      const from = current?.end && current.end > today ? current.end : today;
+      const end = shiftDate(from, 30);
+      const data = { challenge: null, all: true, prize: id, start: today, end, endAt: endOfDay(end), email: d.email || "", name: d.name || "", grantedAt: Date.now() };
+      try {
+        await store.grantAccess(d.id, data);
+        adminSay(`🏆 ${d.name || d.email} won the ${c.name}! Free access until ${shortDate(end)}.`);
+        await loadAdminList();
+      } catch { adminSay("Couldn't give the prize. Try again."); }
+    });
+    li.append(info, give);
+    el.adminBoard.append(li);
+  });
+}
+el.adminBoardCh.addEventListener("change", () => { prizeArmed = null; loadDirectory(); });
 
 el.adminFind.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -2921,13 +3145,23 @@ function memberData() {
   const ch = {};
   for (const c of CHALLENGES) {
     const st = challengeStatus(c);
-    if (st.joined) ch[c.id] = { c: st.count, t: st.target, done: st.done };
+    if (st.joined) ch[c.id] = { c: st.count, t: st.target, done: st.done, p: st.points || 0 };
   }
   return { name: displayName() || "Member", updatedAt: Date.now(), days, level: levelInfo().level, points: totalXP(), ch };
 }
 
 let groupSyncTimer = null;
+let directoryTimer = null;
+function syncDirectory() {
+  if (!store?.saveDirectory || !recentLogs || !profile || !me?.email) return;
+  clearTimeout(directoryTimer);
+  directoryTimer = setTimeout(() => {
+    store.saveDirectory(me.email, displayName(), { ch: memberData().ch }).catch(() => {});
+  }, 3000);
+}
+
 function syncGroups() {
+  syncDirectory();
   if (!store?.saveMember || !recentLogs || !(profile?.groups || []).length) return;
   clearTimeout(groupSyncTimer);
   groupSyncTimer = setTimeout(async () => {
@@ -3183,8 +3417,8 @@ function renderGroups() {
   });
 }
 
-async function addGroupToList(code, name) {
-  const groups = [...(profile?.groups || []).filter((g) => g.code !== code), { code, name }];
+async function addGroupToList(code, name, challenge = null) {
+  const groups = [...(profile?.groups || []).filter((g) => g.code !== code), { code, name, ...(challenge ? { challenge } : {}) }];
   profile = { ...(profile || {}), groups };
   await store.saveGroups(groups);
   updateProgress(null, { quiet: true });
@@ -3545,6 +3779,7 @@ render();
       let deleted = false;
       try { deleted = sessionStorage.getItem("health-log-deleted") === "1"; sessionStorage.removeItem("health-log-deleted"); } catch {}
       if (deleted) auth_.msg.textContent = "Your account and all its data were deleted.";
+      if (pendingInvite()) auth_.tabUp?.click();
       return;
     }
     currentUser = user;

@@ -1572,3 +1572,69 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; justif
 .admin-row small { overflow-wrap: anywhere; }
 .challenge.is-locked .challenge__emoji { filter: grayscale(0.6); }
 .admin-row small { color: var(--muted); }
+
+/* ---------- Log sheet (opens from the + button on Today) ---------- */
+.fab {
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right, 0px));
+  bottom: calc(5.25rem + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  width: 3.75rem;
+  height: 3.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 8px 22px rgb(0 0 0 / 0.25);
+  cursor: pointer;
+}
+.fab svg { width: 1.75rem; height: 1.75rem; }
+.fab:active { transform: scale(0.95); }
+.fab:focus-visible { outline: 3px solid var(--fg); outline-offset: 3px; }
+body.has-tabbar[data-route="today"] .toast { bottom: calc(10rem + env(safe-area-inset-bottom, 0px)); }
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgb(0 0 0 / 0.45);
+}
+body.sheet-open { overflow: hidden; }
+body[data-route="today"] .log-panel.is-sheet,
+.log-panel.is-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: max(2.5rem, env(safe-area-inset-top, 0px));
+  z-index: 45;
+  width: 100%;
+  max-width: 44rem;
+  margin: 0 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  align-content: start;
+  border-radius: 1.25rem 1.25rem 0 0;
+  border-bottom: 0;
+  padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: 0 -10px 40px rgb(0 0 0 / 0.25);
+  animation: sheet-up 0.25s ease-out;
+}
+@keyframes sheet-up { from { transform: translateY(2rem); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .log-panel.is-sheet { animation: none; } }
+.log-panel.is-sheet .log-head { position: sticky; top: 0; z-index: 2; margin: -1.25rem -1.25rem 0; padding: 1rem 1.25rem; background: var(--surface); border-bottom: 1px solid var(--border); }
+.log-panel.is-sheet .log-block { background: var(--bg); }
+.goals-box { display: grid; gap: 0.75rem; }
+body[data-route="today"] #summary { cursor: pointer; }
+
+/* Challenge prize and invites */
+.challenge__prize { margin: 0; font-weight: 700; color: var(--fg); }
+.challenge.is-invited { outline: 3px solid var(--accent); outline-offset: 2px; }
+.challenge-card .btn { justify-self: start; }
+body.has-tabbar[data-route="today"] { padding-bottom: calc(10rem + env(safe-area-inset-bottom, 0px)); }

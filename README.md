@@ -155,3 +155,9 @@ Phones then load the new files instead of an older saved copy. When the app open
 - Prices and payment links are in `shop.js`. Put a Razorpay or Stripe payment link in `payLink` and the Shop shows a **Pay & join** button.
 - Admins are marked by a document `admins/<their user ID>`, created by hand in the Firebase console.
 - Database: `access/<uid>` (written only by admins), `directory/<uid>` (email and name, so admins can search). The rules in `firestore.rules` only allow saving a day's log while someone has access.
+
+## Invites, prizes and the + button (version 38)
+
+- **Invite friends**: on your challenge (Today card or Shop) tap **👥 Invite friends**. It makes a group for that challenge and shares a link (`?invite=<challenge>&group=<code>`). Whoever opens it signs up, joins the group, and lands on that challenge in the Shop to pay.
+- **Prize**: `SHOP.prize` in `shop.js` is shown on every challenge. Each challenge counts points (0–100 a day) from its start. Group leaderboards rank by points. Admin → Challenge leaderboards lists everyone; **🏆 Give prize** gives 30 days of free all access, added after any access they still have.
+- **Today** shows your day, points, challenge and badges. The round **+** button (or tapping your stats) opens the log as a sheet; goals are edited at the bottom of that sheet.

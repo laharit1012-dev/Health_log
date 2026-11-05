@@ -4,7 +4,9 @@
 
 export const SHOP = {
   currency: "₹",
-  website: "", // your challenges website, for "See all challenges" links
+  website: "",
+  // Shown on every challenge. The admin gives the prize from the Admin page.
+  prize: "Most points at the end wins 1 month free", // your challenges website, for "See all challenges" links
   items: {
     "christmas-2026": { price: 249, payLink: "" },
     "postholiday-2026": { price: 99, payLink: "" },
