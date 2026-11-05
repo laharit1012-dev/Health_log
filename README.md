@@ -10,7 +10,7 @@ Each day you can log:
 - **Steps**: progress toward 10,000
 - **Water**: glasses (250 ml each), goal 8
 - **Sleep**: bedtime and wake-up time; hours are worked out automatically
-- **Workout**: type, minutes and notes
+- **Workouts**: as many as you did (walk, strength, yoga…), each with minutes and notes, plus a daily total
 - **Food**: everything eaten through the day, grouped by meal, with optional calories
 
 Use the arrows at the top to look back at earlier days. **Edit name** changes the name shown on your log.

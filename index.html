@@ -143,36 +143,36 @@
           </div>
           <p class="hint" id="sleep-hint">Goal 7–9 hours</p>
         </div>
+      </div>
 
-        <!-- Workout -->
-        <div class="log-block">
-          <span class="block-label">Workout</span>
-          <div class="pair">
-            <label class="field">
-              <span>Type</span>
-              <select id="workout-type">
-                <option value="">Choose…</option>
-                <option>Walk</option>
-                <option>Run</option>
-                <option>Cycling</option>
-                <option>Strength</option>
-                <option>Yoga</option>
-                <option>Swim</option>
-                <option>Sports</option>
-                <option>Other</option>
-                <option>Rest day</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Minutes</span>
-              <input id="workout-min" type="number" inputmode="numeric" min="0" step="1" placeholder="0">
-            </label>
-          </div>
-          <label class="field">
-            <span>Notes</span>
-            <input id="workout-notes" type="text" placeholder="e.g. 3 sets squats, 5 km route" maxlength="200">
-          </label>
+      <!-- Workouts: as many as you like each day -->
+      <div class="food">
+        <div class="section-head">
+          <h3>Workouts</h3>
+          <span id="workout-total" class="hint"></span>
         </div>
+
+        <form id="workout-form" class="food-form">
+          <select id="workout-type" aria-label="Workout type">
+            <option value="">Type…</option>
+            <option>Walk</option>
+            <option>Run</option>
+            <option>Cycling</option>
+            <option>Strength</option>
+            <option>Yoga</option>
+            <option>Swim</option>
+            <option>Sports</option>
+            <option>Dance</option>
+            <option>Other</option>
+            <option>Rest day</option>
+          </select>
+          <input id="workout-notes" type="text" placeholder="Notes, e.g. 3 sets squats, 5 km route" aria-label="Workout notes (optional)" autocomplete="off" maxlength="200">
+          <input id="workout-min" type="number" inputmode="numeric" min="0" placeholder="min" aria-label="Minutes">
+          <button class="btn" type="submit">Add</button>
+        </form>
+        <p id="workout-msg" class="hint" aria-live="polite"></p>
+
+        <div id="workout-list" class="food-list"></div>
       </div>
 
       <!-- Food -->

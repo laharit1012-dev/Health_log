@@ -99,7 +99,7 @@ function emptyLog(date) {
     steps: null,
     water: 0,
     sleep: { bed: "", wake: "" },
-    workout: { type: "", minutes: null, notes: "" },
+    workouts: [],
     foods: [],
   };
 }
@@ -108,18 +108,27 @@ function emptyLog(date) {
 function normalize(log, date) {
   const base = emptyLog(date);
   if (!log) return base;
+  const { workout, ...rest } = log;
   return {
-    ...base, ...log,
+    ...base, ...rest,
     sleep: { ...base.sleep, ...(log.sleep || {}) },
-    workout: { ...base.workout, ...(log.workout || {}) },
     foods: Array.isArray(log.foods) ? log.foods : [],
+    workouts: Array.isArray(log.workouts) ? log.workouts : legacyWorkout(log.workout),
   };
 }
+
+// Older logs kept one workout as { type, minutes, notes }
+function legacyWorkout(w) {
+  if (!w || (!w.type && !w.minutes && !w.notes)) return [];
+  return [{ id: "w-earlier", type: w.type || "Other", minutes: w.minutes ?? null, notes: w.notes || "" }];
+}
+
+const workoutMinutes = (log) => log.workouts.reduce((sum, w) => sum + (Number(w.minutes) || 0), 0);
 
 // ---------- Storage (Cloud Firestore) ----------
 // Private to each person (locked by the security rules in firestore.rules):
 //   users/<uid>              { name, shareCode, links: [{ code, name }] }
-//   users/<uid>/days/<date>  { steps, water, sleep, workout, foods }
+//   users/<uid>/days/<date>  { steps, water, sleep, workouts, foods }
 // Shared copy, only while sharing is on (readable by signed-in people who
 // know the code; the code can't be listed or guessed in practice):
 //   shares/<code>              { owner: <uid>, name }
@@ -276,7 +285,8 @@ const el = {
   steps: $("steps"), stepsBar: $("steps-bar"), stepsHint: $("steps-hint"),
   waterMinus: $("water-minus"), waterPlus: $("water-plus"), waterCount: $("water-count"), waterBar: $("water-bar"), waterHint: $("water-hint"),
   bed: $("sleep-bed"), wake: $("sleep-wake"), sleepHint: $("sleep-hint"),
-  wType: $("workout-type"), wMin: $("workout-min"), wNotes: $("workout-notes"),
+  wForm: $("workout-form"), wType: $("workout-type"), wMin: $("workout-min"), wNotes: $("workout-notes"),
+  wList: $("workout-list"), wTotal: $("workout-total"), wMsg: $("workout-msg"),
   foodForm: $("food-form"), foodMeal: $("food-meal"), foodItem: $("food-item"), foodCal: $("food-cal"),
   foodList: $("food-list"), foodTotal: $("food-total"),
   people: $("people"), viewNote: $("view-note"), summaryTitle: $("summary-title"),
@@ -288,6 +298,7 @@ const el = {
 
 const editableControls = () => [
   el.steps, el.waterMinus, el.waterPlus, el.bed, el.wake, el.wType, el.wMin, el.wNotes,
+  ...el.wForm.querySelectorAll("button"),
   el.foodMeal, el.foodItem, el.foodCal, ...el.foodForm.querySelectorAll("button"),
 ];
 
@@ -401,12 +412,64 @@ function renderSummary() {
   addStat("Steps", log.steps != null ? fmt(log.steps) : "—", log.steps != null ? `/ ${fmt(GOALS.steps)}` : "");
   addStat("Water", String(log.water), `/ ${GOALS.water} glasses`);
   addStat("Sleep", formatHours(hours));
-  addStat("Workout", log.workout.minutes ? `${log.workout.minutes} min` : (log.workout.type || "—"),
-    log.workout.minutes && log.workout.type ? log.workout.type : "");
+  const wMins = workoutMinutes(log);
+  const wCount = log.workouts.length;
+  addStat("Workouts", wCount ? (wMins ? `${fmt(wMins)} min` : String(wCount)) : "—",
+    wCount ? (wMins ? `${wCount} workout${wCount === 1 ? "" : "s"}` : (wCount === 1 ? "workout" : "workouts")) : "");
   addStat("Food", log.foods.length ? String(log.foods.length) : "—",
     log.foods.length
       ? (log.foods.length === 1 ? "item" : "items") + (kcal ? ` · ${fmt(kcal)} kcal` : "")
       : "");
+}
+
+function renderWorkouts(log) {
+  const mins = workoutMinutes(log);
+  const n = log.workouts.length;
+  el.wTotal.textContent = n ? `${n} workout${n === 1 ? "" : "s"}${mins ? ` · ${fmt(mins)} min` : ""}` : "";
+  el.wForm.hidden = !!viewing;
+  el.wList.replaceChildren();
+
+  if (!n) {
+    const p = document.createElement("p");
+    p.className = "food-empty";
+    p.textContent = viewing ? "No workouts logged for this day." : "No workouts yet. Pick a type above and tap Add. Add as many as you did.";
+    el.wList.append(p);
+    return;
+  }
+
+  const ul = document.createElement("ul");
+  const wrap = document.createElement("div");
+  wrap.className = "meal-group";
+  for (const w of log.workouts) {
+    const li = document.createElement("li");
+    li.className = "food-row";
+    const item = document.createElement("span");
+    item.className = "food-row__item";
+    item.textContent = w.type;
+    if (w.notes) {
+      const small = document.createElement("small");
+      small.textContent = w.notes;
+      item.append(small);
+    }
+    const meta = document.createElement("span");
+    meta.className = "food-row__meta";
+    meta.textContent = w.minutes ? `${fmt(w.minutes)} min` : "";
+    li.append(item, meta);
+    if (!readOnly()) {
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "food-row__delete";
+      del.textContent = "✕";
+      del.setAttribute("aria-label", `Remove ${w.type}`);
+      del.addEventListener("click", () => {
+        edit((l) => { l.workouts = l.workouts.filter((x) => x.id !== w.id); });
+      });
+      li.append(del);
+    }
+    ul.append(li);
+  }
+  wrap.append(ul);
+  el.wList.append(wrap);
 }
 
 function renderPanel() {
@@ -453,10 +516,8 @@ function renderPanel() {
     el.sleepHint.textContent = `${formatHours(hours)} of sleep · ${note}`;
   }
 
-  // Workout
-  setValue(el.wType, log.workout.type);
-  setValue(el.wMin, log.workout.minutes);
-  setValue(el.wNotes, log.workout.notes);
+  // Workouts
+  renderWorkouts(log);
 
   // Food
   const kcal = caloriesOf(log);
@@ -523,9 +584,26 @@ el.waterPlus.addEventListener("click", () => edit((l) => { l.water += 1; }));
 el.waterMinus.addEventListener("click", () => edit((l) => { l.water = Math.max(0, l.water - 1); }));
 el.bed.addEventListener("change", () => edit((l) => { l.sleep.bed = el.bed.value; }));
 el.wake.addEventListener("change", () => edit((l) => { l.sleep.wake = el.wake.value; }));
-el.wType.addEventListener("change", () => edit((l) => { l.workout.type = el.wType.value; }));
-el.wMin.addEventListener("input", () => edit((l) => { l.workout.minutes = numOrNull(el.wMin.value); }));
-el.wNotes.addEventListener("input", () => edit((l) => { l.workout.notes = el.wNotes.value; }));
+el.wForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const type = el.wType.value;
+  if (!type) {
+    el.wMsg.textContent = "Choose a workout type, then tap Add.";
+    el.wType.focus();
+    return;
+  }
+  const entry = {
+    id: "w" + Date.now() + Math.random().toString(36).slice(2, 6),
+    type,
+    minutes: numOrNull(el.wMin.value),
+    notes: el.wNotes.value.trim(),
+  };
+  edit((l) => { l.workouts.push(entry); });
+  el.wMsg.textContent = "";
+  el.wType.value = "";
+  el.wMin.value = "";
+  el.wNotes.value = "";
+});
 
 // Pick a sensible default meal for the time of day
 function defaultMeal() {

@@ -347,6 +347,7 @@ main {
 }
 
 .summary .stat dd { font-size: 1.25rem; }
+.summary .stat dd small { display: block; margin-top: 0.125rem; }
 
 @media (max-width: 34rem) {
   .summary .stat:last-child:nth-child(odd) { grid-column: 1 / -1; }
@@ -392,6 +393,9 @@ main {
   grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
   gap: 1rem;
 }
+
+/* Three blocks: let the last one use the full row when it would sit alone */
+.log-grid > .log-block:last-child:nth-child(odd) { grid-column: 1 / -1; }
 
 .log-block {
   display: grid;
@@ -469,7 +473,10 @@ main {
 
 @media (max-width: 34rem) {
   .food-form { grid-template-columns: minmax(0, 1fr) 5.5rem; }
-  .food-form #food-item { grid-column: 1 / -1; grid-row: 1; }
+  .food-form input[type="text"] { grid-column: 1 / -1; grid-row: 1; }
+  #workout-form select { grid-row: 1; }
+  #workout-form input[type="number"] { grid-row: 1; }
+  #workout-form input[type="text"] { grid-row: 2; }
   .food-form .btn { grid-column: 1 / -1; }
 }
 
@@ -502,6 +509,9 @@ main {
 
 .food-row:first-child { border-top: 0; }
 .food-row__item { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.food-row__item small { display: block; color: var(--muted); font-size: 0.8125rem; }
+.food-list--flat ul { border-radius: 0.625rem; }
+#workout-msg:empty { display: none; }
 .food-row__meta { color: var(--muted); font-size: 0.875rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .food-row__delete {
