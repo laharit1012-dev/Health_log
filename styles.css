@@ -1151,3 +1151,24 @@ body[data-route="today"] .goals-row {
 .watch-ask { background: var(--surface); }
 .watch-ask p { margin: 0; }
 .switch-row--list { padding: 0.25rem 0; }
+
+/* iPhone Safari gives date/time inputs a fixed minimum width; let them fit their box */
+input[type="time"],
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 2.75rem;
+  text-align: left;
+}
+input[type="time"]::-webkit-date-and-time-value,
+input[type="date"]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+.day-bar input[type="date"] { width: auto; display: inline-block; min-height: 0; text-align: center; }
+.day-bar input[type="date"]::-webkit-date-and-time-value { text-align: center; }
+.pair > .field, .pair > * { min-width: 0; }
+
+/* Make switches that can't be used here look clearly unavailable */
+.switch:disabled { opacity: 0.35; }
