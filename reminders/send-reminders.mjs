@@ -32,7 +32,7 @@ async function sendTo(tokens, title, body) {
       });
       sent++;
     } catch (err) {
-      if (GONE.has(err?.code)) dead.push(t.token);
+      if (GONE.has(err?.code)) { dead.push(t.token); console.log(`A device stopped accepting notifications (${err.code}); it was removed.`); }
       else console.warn("Send failed:", err?.code || err?.message);
     }
   }
@@ -40,12 +40,13 @@ async function sendTo(tokens, title, body) {
 }
 
 // People with water/workout reminders, plus people who asked for someone's cycle updates
-const [withReminders, withCycle] = await Promise.all([
+const [withReminders, withCycle, withTest] = await Promise.all([
   db.collection("users").where("remindersOn", "==", true).get(),
   db.collection("users").where("cycleWatchOn", "==", true).get(),
+  db.collection("users").where("pushTest", "==", true).get(),
 ]);
 const byId = new Map();
-for (const d of [...withReminders.docs, ...withCycle.docs]) byId.set(d.id, d);
+for (const d of [...withReminders.docs, ...withCycle.docs, ...withTest.docs]) byId.set(d.id, d);
 const users = { docs: [...byId.values()], size: byId.size };
 let total = 0;
 const shareCache = new Map();
@@ -53,7 +54,13 @@ const shareCache = new Map();
 for (const snap of users.docs) {
   const u = snap.data();
   const tokens = Array.isArray(u.pushTokens) ? u.pushTokens.filter((t) => t?.token) : [];
-  if (!tokens.length) continue;
+  // A short id and times only (these logs are public): no names, emails or health data
+  const who = snap.id.slice(0, 5);
+  if (!tokens.length) {
+    console.log(`${who}: no device registered for notifications (turn a reminder off and on again in the app)`);
+    if (u.pushTest) await snap.ref.update({ pushTest: false });
+    continue;
+  }
 
   const r = u.reminders || {};
   const goals = { ...DEFAULT_GOALS, ...(u.goals || {}) };
@@ -63,6 +70,19 @@ for (const snap of users.docs) {
   const workoutKey = u.remindersOn ? workoutDue(r.workout, local, state.workoutDate) : null;
   const update = {};
   let dead = [];
+  const hhmm = `${String(Math.floor(local.minutes / 60)).padStart(2, "0")}:${String(local.minutes % 60).padStart(2, "0")}`;
+  console.log(`${who}: ${tokens.length} device(s), local time ${hhmm}` +
+    ` | workout ${r.workout?.on ? `on at ${r.workout.time}, last sent ${state.workoutDate || "never"}` : "off"}` +
+    ` | water ${r.water?.on ? `on ${r.water.from}-${r.water.to} every ${r.water.every}h` : "off"}` +
+    ` | due now: ${[waterKey && "water", workoutKey && "workout"].filter(Boolean).join(", ") || "nothing"}`);
+
+  // Test requested from the app's Reminders page
+  if (u.pushTest) {
+    update.pushTest = false;
+    const res = await sendTo(tokens, "Health Log test", "Reminders reach this device. You're all set! 🎉");
+    console.log(`${who}: test notification sent to ${res.sent} of ${tokens.length} device(s)`);
+    total += res.sent; dead = dead.concat(res.dead);
+  }
 
   // Cycle updates: someone shared their cycle tracker and this person asked to be told
   // when the phase changes. Sent between 9 AM and 9 PM their time.
@@ -107,6 +127,7 @@ for (const snap of users.docs) {
   if (workoutKey) {
     update["reminderState.workoutDate"] = workoutKey;
     const mins = workoutMinutes(day);
+    if (mins >= goals.workout) console.log(`${who}: workout goal already reached today, reminder skipped`);
     if (mins < goals.workout) {
       const left = goals.workout - mins;
       const res = await sendTo(tokens, "Time to move",

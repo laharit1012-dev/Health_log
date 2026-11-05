@@ -22,9 +22,10 @@ test("water: due at each slot, once", () => {
 
 test("water: nothing outside the window, when off, or when too late", () => {
   assert.equal(waterSlotDue(water, at(8, 50), null), null);
-  assert.equal(waterSlotDue(water, at(22, 0), null), null);
+  assert.equal(waterSlotDue(water, at(22, 15), null), null);
   assert.equal(waterSlotDue({ ...water, on: false }, at(9, 0), null), null);
-  assert.equal(waterSlotDue(water, at(9, 50), null), null); // 50 min late: skip, next slot will come
+  assert.equal(waterSlotDue(water, at(9, 50), null), "2026-11-05@540"); // 50 min late: still sent
+  assert.equal(waterSlotDue(water, at(10, 15), null), null); // 75 min late: skip, next slot will come
 });
 
 test("water: every 1.5 hours", () => {

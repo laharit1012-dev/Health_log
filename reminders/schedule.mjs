@@ -19,14 +19,14 @@ export function localNow(now, timeZone) {
 }
 
 // Water: every N hours from "from" to "to". Returns a key for the slot that is due, or null.
-// A slot stays due for 45 minutes, so a late-running job still sends it once.
+// A slot stays due for 70 minutes: GitHub often runs the job only about once an hour.
 export function waterSlotDue(cfg, local, lastSlot) {
   if (!cfg?.on) return null;
   const from = toMin(cfg.from), to = toMin(cfg.to), every = Math.round(Number(cfg.every) * 60);
   if (from == null || to == null || !(every >= 30) || to < from) return null;
-  if (local.minutes < from || local.minutes > to + 45) return null;
+  if (local.minutes < from || local.minutes > to + 70) return null;
   const slot = from + Math.floor((local.minutes - from) / every) * every;
-  if (slot > to || local.minutes - slot > 45) return null;
+  if (slot > to || local.minutes - slot > 70) return null;
   const key = `${local.date}@${slot}`;
   return key === lastSlot ? null : key;
 }
