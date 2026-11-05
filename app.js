@@ -12,9 +12,9 @@ import {
   EmailAuthProvider, reauthenticateWithCredential, deleteUser,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc,
+  getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { firebaseConfig } from "./firebase-config.js?v=11";
+import { firebaseConfig } from "./firebase-config.js?v=12";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -51,7 +51,9 @@ systemDark.addEventListener("change", (e) => {
 applyTheme(savedTheme() || currentTheme());
 
 // ---------- Goals ----------
-const GOALS = { steps: 10000, water: 8, sleepMin: 7, sleepMax: 9 };
+// Starter goals; each person can set their own (stored in users/<uid>.goals)
+const DEFAULT_GOALS = { steps: 10000, water: 8, sleep: 8, workout: 30 };
+const goalsFor = (g) => ({ ...DEFAULT_GOALS, ...(g || {}) });
 const GLASS_ML = 250;
 const MEALS = ["Breakfast", "Lunch", "Dinner", "Snack"];
 
@@ -89,6 +91,7 @@ function formatHours(h) {
   if (h == null) return "—";
   const whole = Math.floor(h);
   const mins = Math.round((h - whole) * 60);
+  if (!whole) return `${mins}m`;
   return mins ? `${whole}h ${mins}m` : `${whole}h`;
 }
 
@@ -149,7 +152,7 @@ function firestoreStore(db, uid) {
     kind: "account",
     canLink: true,
     watchProfile: (cb, onError) => watch(userRef, (d, m) => cb(d
-      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null }
+      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null }
       : null, m), onError),
     watchSharing: (cb, onError) => watch(userRef, (d, m) => cb(d?.shareCode ? { code: d.shareCode, cycle: !!d.shareCycle } : null, m), onError),
     watchLinks: (cb, onError) => watch(userRef, (d, m) => cb({ people: Array.isArray(d?.links) ? d.links : [] }, m), onError),
@@ -164,7 +167,13 @@ function firestoreStore(db, uid) {
     // Copies kept for people you share with
     mirrorDay: (code, log) => setDoc(shareDayRef(code, log.date), log),
     // The shared header: name, plus period data only if she chose to share it
-    mirrorProfile: (code, name, cycle) => setDoc(shareRef(code), { owner: uid, name, cycle: cycle || null }),
+    mirrorProfile: (code, name, cycle, goals) =>
+      setDoc(shareRef(code), { owner: uid, name, cycle: cycle || null, goals: goals || null }),
+    // Recent days, for the step streak
+    async daysSince(fromISO) {
+      const snap = await getDocs(query(collection(db, "users", uid, "days"), where("date", ">=", fromISO)));
+      return snap.docs.map((d) => d.data());
+    },
     async copyAllDays(code) {
       const snap = await getDocs(collection(db, "users", uid, "days"));
       for (const d of snap.docs) await setDoc(shareDayRef(code, d.id), d.data());
@@ -225,12 +234,26 @@ let links = [];            // [{ code, name }] people whose logs you can see
 let viewing = null;        // null = your own log, otherwise a linked person's code
 let viewName = "";         // name of the linked person being viewed
 let viewCycle = null;      // their period data, only if they chose to share it
+let viewGoals = null;      // their goals
+let recent = null;         // { date: steps } for the last 60 days, for the streak
 let viewGone = false;      // the linked person stopped sharing
 let pendingShare = false;  // create a code as soon as a name is saved
 
 const logNow = () => (viewing ? normalize(dayLog, date) : drafts[date] || normalize(dayLog, date));
 const displayName = () => profile?.name || "";
 const isFemale = () => profile?.gender === "female";
+const goalsNow = () => goalsFor(viewing ? viewGoals : profile?.goals);
+
+// Which goals a day's log has reached
+function metFlags(log, g) {
+  const hours = sleepHours(log.sleep.bed, log.sleep.wake);
+  return {
+    steps: (log.steps || 0) >= g.steps,
+    water: log.water >= g.water,
+    sleep: hours != null && hours >= g.sleep,
+    workout: workoutMinutes(log) >= g.workout,
+  };
+}
 let dayReady = false;      // the log for `date` has arrived; editing before that could overwrite it
 const readOnly = () => !!blocked || !!viewing || !store || !dayReady;
 
@@ -241,8 +264,12 @@ let saving = 0;
 
 function edit(mutate) {
   if (readOnly()) return;
+  const before = metFlags(logNow(), goalsNow());
   const log = structuredClone(logNow());
   mutate(log);
+  const after = metFlags(log, goalsNow());
+  const reached = Object.keys(after).filter((k) => after[k] && !before[k]);
+  if (reached.length) celebrate(reached, log);
   const d = log.date;
   drafts[d] = log;
   clearTimeout(timers[d]);
@@ -258,7 +285,10 @@ function flush(d) {
   chains[d] = (chains[d] || Promise.resolve())
     .then(() => store.saveDay(log))
     .then(() => (sharing?.code ? store.mirrorDay(sharing.code, log) : null))
-    .then(() => { if (drafts[d] === log) delete drafts[d]; })
+    .then(() => {
+      if (recent) recent[log.date] = log.steps || 0;
+      if (drafts[d] === log) delete drafts[d];
+    })
     .catch((err) => handleWriteError(err))
     .finally(() => { saving--; setStatus(); render(); });
 }
@@ -304,9 +334,13 @@ const el = {
   waterMinus: $("water-minus"), waterPlus: $("water-plus"), waterCount: $("water-count"), waterBar: $("water-bar"), waterHint: $("water-hint"),
   bed: $("sleep-bed"), wake: $("sleep-wake"), sleepHint: $("sleep-hint"),
   wForm: $("workout-form"), wType: $("workout-type"), wMin: $("workout-min"), wNotes: $("workout-notes"),
-  wList: $("workout-list"), wTotal: $("workout-total"), wMsg: $("workout-msg"),
+  wList: $("workout-list"), wBar: $("workout-bar"), wTotal: $("workout-total"), wMsg: $("workout-msg"),
   foodForm: $("food-form"), foodMeal: $("food-meal"), foodItem: $("food-item"), foodCal: $("food-cal"),
   foodList: $("food-list"), foodTotal: $("food-total"),
+  nudgeText: $("nudge-text"), streak: $("streak"), streakText: $("streak-text"),
+  goalsText: $("goals-text"), goalsEdit: $("goals-edit"), goalsForm: $("goals-form"), goalsMsg: $("goals-msg"),
+  goalSteps: $("goal-steps"), goalWater: $("goal-water"), goalSleep: $("goal-sleep"), goalWorkout: $("goal-workout"),
+  goalsCancel: $("goals-cancel"), toast: $("toast"), confetti: $("confetti"),
   people: $("people"), viewNote: $("view-note"), summaryTitle: $("summary-title"),
   linkPanel: $("link-panel"), shareOff: $("share-off"), shareOn: $("share-on"), shareCode: $("share-code"),
   shareCreate: $("share-create"),
@@ -362,6 +396,8 @@ function render() {
 
   renderPeople();
   renderSummary();
+  renderGoals();
+  renderNudge();
   renderPanel();
   renderLinkPanel();
   setStatus();
@@ -428,9 +464,11 @@ function renderSummary() {
   const kcal = caloriesOf(log);
   el.summary.replaceChildren();
 
-  const addStat = (label, value, unit) => {
+  const met = metFlags(log, goalsNow());
+  const g = goalsNow();
+  const addStat = (label, value, unit, isMet) => {
     const wrap = document.createElement("div");
-    wrap.className = "stat";
+    wrap.className = "stat" + (isMet ? " is-met" : "");
     const dt = document.createElement("dt");
     dt.textContent = label;
     const dd = document.createElement("dd");
@@ -444,13 +482,11 @@ function renderSummary() {
     el.summary.append(wrap);
   };
 
-  addStat("Steps", log.steps != null ? fmt(log.steps) : "—", log.steps != null ? `/ ${fmt(GOALS.steps)}` : "");
-  addStat("Water", String(log.water), `/ ${GOALS.water} glasses`);
-  addStat("Sleep", formatHours(hours));
+  addStat("Steps", log.steps != null ? fmt(log.steps) : "—", `/ ${fmt(g.steps)}`, met.steps);
+  addStat("Water", String(log.water), `/ ${g.water} glasses`, met.water);
+  addStat("Sleep", formatHours(hours), `/ ${g.sleep} h`, met.sleep);
   const wMins = workoutMinutes(log);
-  const wCount = log.workouts.length;
-  addStat("Workouts", wCount ? (wMins ? `${fmt(wMins)} min` : String(wCount)) : "—",
-    wCount ? (wMins ? `${wCount} workout${wCount === 1 ? "" : "s"}` : (wCount === 1 ? "workout" : "workouts")) : "");
+  addStat("Workouts", wMins ? `${fmt(wMins)} min` : "—", `/ ${g.workout} min`, met.workout);
   if (viewing ? !!viewCycle : isFemale()) {
     const c = cycleInfo(viewing ? viewCycle : profile.cycle, date);
     if (c.last) addStat("Cycle", `Day ${diffDays(c.last, date) + 1}`, `next ~${shortDate(shiftDate(c.last, c.len))}`);
@@ -462,10 +498,207 @@ function renderSummary() {
       : "");
 }
 
+// ---------- Goals, encouragement and streak ----------
+function goalsLine(g) {
+  return `${fmt(g.steps)} steps · ${g.water} glasses · ${g.sleep} h sleep · ${g.workout} min workout`;
+}
+
+function renderGoals() {
+  const g = goalsNow();
+  if (viewing) {
+    el.goalsText.textContent = `${viewName || "Their"}'s goals: ${goalsLine(g)}`;
+    el.goalsEdit.hidden = true;
+    el.goalsForm.hidden = true;
+    return;
+  }
+  el.goalsText.textContent = profile?.goals
+    ? `Your goals: ${goalsLine(g)}`
+    : `Starter goals: ${goalsLine(g)}. Make them yours!`;
+  el.goalsEdit.hidden = readOnly() || !el.goalsForm.hidden;
+}
+
+function streakCount() {
+  if (!recent || viewing) return { days: 0, todayDone: false };
+  const goal = goalsFor(profile?.goals).steps;
+  const today = todayISO();
+  const todaySteps = date === today ? (logNow().steps || 0) : (recent[today] || 0);
+  const todayDone = todaySteps >= goal;
+  let days = todayDone ? 1 : 0;
+  for (let d = shiftDate(today, -1); (recent[d] || 0) >= goal; d = shiftDate(d, -1)) days++;
+  return { days, todayDone };
+}
+
+function renderNudge() {
+  const log = logNow();
+  const g = goalsNow();
+  const met = metFlags(log, g);
+  const count = Object.values(met).filter(Boolean).length;
+
+  // Streak chip (your own log only)
+  const st = streakCount();
+  el.streak.hidden = st.days === 0;
+  if (st.days) el.streakText.textContent = `${st.days}-day step streak`;
+
+  if (viewing) {
+    el.nudgeText.textContent = `${viewName || "They"} reached ${count} of 4 goals ${date === todayISO() ? "today" : "this day"}.`;
+    return;
+  }
+  if (date !== todayISO()) {
+    el.nudgeText.textContent = count === 4 ? "Every goal reached this day. Nice!" : `${count} of 4 goals reached this day.`;
+    return;
+  }
+  if (count === 4) {
+    el.nudgeText.textContent = "You reached every goal today. Amazing work!";
+    return;
+  }
+  // Suggest the goal that's closest to done
+  const options = [];
+  const steps = log.steps || 0;
+  if (!met.steps) {
+    const left = g.steps - steps;
+    const mins = Math.max(5, Math.ceil(left / 100)); // about 100 steps a minute
+    const walk = mins < 60 ? `about a ${mins}-minute walk` : `about ${formatHours(mins / 60)} of walking`;
+    options.push({ p: steps / g.steps, text: `${fmt(left)} steps to go, ${walk}.` });
+  }
+  if (!met.water) {
+    const left = g.water - log.water;
+    options.push({ p: log.water / g.water, text: `${left} more glass${left === 1 ? "" : "es"} of water to reach your goal.` });
+  }
+  if (!met.workout) {
+    const left = g.workout - workoutMinutes(log);
+    options.push({ p: workoutMinutes(log) / g.workout, text: `${left} more workout minute${left === 1 ? "" : "s"} to hit your goal. Even a quick walk counts!` });
+  }
+  if (!met.sleep) {
+    const hours = sleepHours(log.sleep.bed, log.sleep.wake);
+    options.push({ p: (hours || 0) / g.sleep - 0.01, text: hours == null
+      ? `Log last night's sleep. Your goal is ${g.sleep} hours.`
+      : `Aim for ${g.sleep} hours of sleep tonight.` });
+  }
+  options.sort((a, b) => b.p - a.p);
+  const keepStreak = st.days > 0 && !st.todayDone ? ` Reach your step goal today to keep your ${st.days}-day streak going.` : "";
+  el.nudgeText.textContent = (options[0]?.text || `${count} of 4 goals reached today.`) + (met.steps ? "" : keepStreak);
+}
+
+el.goalsEdit.addEventListener("click", () => {
+  const g = goalsFor(profile?.goals);
+  el.goalSteps.value = g.steps;
+  el.goalWater.value = g.water;
+  el.goalSleep.value = g.sleep;
+  el.goalWorkout.value = g.workout;
+  el.goalsMsg.textContent = "";
+  el.goalsForm.hidden = false;
+  render();
+  el.goalSteps.focus();
+});
+
+el.goalsCancel.addEventListener("click", () => { el.goalsForm.hidden = true; render(); });
+
+el.goalsForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const num = (input) => Number(input.value);
+  const goals = {
+    steps: Math.round(num(el.goalSteps)),
+    water: Math.round(num(el.goalWater)),
+    sleep: Math.round(num(el.goalSleep) * 2) / 2,
+    workout: Math.round(num(el.goalWorkout)),
+  };
+  const bad =
+    !(goals.steps >= 500 && goals.steps <= 100000) ? "Steps: pick a number between 500 and 100,000." :
+    !(goals.water >= 1 && goals.water <= 30) ? "Water: pick between 1 and 30 glasses." :
+    !(goals.sleep >= 3 && goals.sleep <= 14) ? "Sleep: pick between 3 and 14 hours." :
+    !(goals.workout >= 5 && goals.workout <= 600) ? "Workout: pick between 5 and 600 minutes." : "";
+  if (bad) { el.goalsMsg.textContent = bad; return; }
+  el.goalsForm.hidden = true;
+  profile = { ...(profile || {}), goals };
+  render();
+  showToast("Goals saved. You've got this!");
+  try {
+    await store.saveProfile({ goals });
+    await syncShareProfile();
+  } catch (err) {
+    handleWriteError(err);
+    render();
+  }
+});
+
+// ---------- Celebrations ----------
+let toastTimer = null;
+function showToast(text) {
+  el.toast.textContent = text;
+  el.toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.toast.hidden = true; }, 3200);
+}
+
+function celebrate(keys, log) {
+  const g = goalsNow();
+  const words = {
+    steps: `Step goal reached: ${fmt(log.steps || 0)} steps!`,
+    water: "Water goal reached. Nicely hydrated!",
+    workout: `Workout goal done: ${fmt(workoutMinutes(log))} minutes!`,
+    sleep: `You hit your ${g.sleep}-hour sleep goal!`,
+  };
+  const all = Object.values(metFlags(log, g)).every(Boolean);
+  showToast(all ? "Every goal reached today. Amazing!" : words[keys[0]]);
+  burstConfetti();
+}
+
+function burstConfetti() {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const canvas = el.confetti;
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = innerWidth * dpr;
+  canvas.height = innerHeight * dpr;
+  ctx.scale(dpr, dpr);
+  const css = getComputedStyle(document.documentElement);
+  const colors = [css.getPropertyValue("--accent"), css.getPropertyValue("--warm"), "#FDE68A", "#5CC4B5", "#F97066"];
+  const pieces = Array.from({ length: 110 }, () => ({
+    x: innerWidth / 2 + (Math.random() - 0.5) * 80,
+    y: innerHeight * 0.6,
+    vx: (Math.random() - 0.5) * 12,
+    vy: -8 - Math.random() * 9,
+    size: 5 + Math.random() * 6,
+    rot: Math.random() * Math.PI,
+    vr: (Math.random() - 0.5) * 0.3,
+    color: colors[Math.floor(Math.random() * colors.length)].trim() || "#0F766E",
+  }));
+  const startT = performance.now();
+  const frame = (t) => {
+    const elapsed = t - startT;
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    for (const p of pieces) {
+      p.vy += 0.35; p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.vx *= 0.99;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - elapsed / 1800);
+      ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.size / 2, -p.size / 3, p.size, p.size * 0.66);
+      ctx.restore();
+    }
+    if (elapsed < 1800) requestAnimationFrame(frame);
+    else ctx.clearRect(0, 0, innerWidth, innerHeight);
+  };
+  requestAnimationFrame(frame);
+}
+
+async function loadRecent() {
+  if (!store?.daysSince) return;
+  try {
+    const days = await store.daysSince(shiftDate(todayISO(), -60));
+    recent = Object.fromEntries(days.map((d) => [d.date, d.steps || 0]));
+    render();
+  } catch { recent = null; }
+}
+
 function renderWorkouts(log) {
   const mins = workoutMinutes(log);
   const n = log.workouts.length;
-  el.wTotal.textContent = n ? `${n} workout${n === 1 ? "" : "s"}${mins ? ` · ${fmt(mins)} min` : ""}` : "";
+  const goal = goalsNow().workout;
+  el.wTotal.textContent = n
+    ? `${n} workout${n === 1 ? "" : "s"} · ${fmt(mins)} of ${goal} min`
+    : `Goal ${goal} min`;
+  el.wBar.style.width = Math.min(100, (mins / goal) * 100) + "%";
   el.wForm.hidden = !!viewing;
   el.wList.replaceChildren();
 
@@ -649,26 +882,27 @@ function renderPanel() {
 
   // Steps
   setValue(el.steps, log.steps);
-  el.stepsBar.style.width = Math.min(100, ((log.steps || 0) / GOALS.steps) * 100) + "%";
-  el.stepsHint.textContent = (log.steps || 0) >= GOALS.steps
-    ? `Goal of ${fmt(GOALS.steps)} reached`
-    : `${fmt(Math.max(0, GOALS.steps - (log.steps || 0)))} to go · goal ${fmt(GOALS.steps)}`;
+  const g = goalsNow();
+  el.stepsBar.style.width = Math.min(100, ((log.steps || 0) / g.steps) * 100) + "%";
+  el.stepsHint.textContent = (log.steps || 0) >= g.steps
+    ? `Goal of ${fmt(g.steps)} reached`
+    : `${fmt(Math.max(0, g.steps - (log.steps || 0)))} to go · goal ${fmt(g.steps)}`;
 
   // Water
   el.waterCount.textContent = log.water;
   el.waterMinus.disabled = log.water <= 0;
-  el.waterBar.style.width = Math.min(100, (log.water / GOALS.water) * 100) + "%";
-  el.waterHint.textContent = `${fmt(log.water * GLASS_ML)} ml · glasses of ${GLASS_ML} ml · goal ${GOALS.water}`;
+  el.waterBar.style.width = Math.min(100, (log.water / g.water) * 100) + "%";
+  el.waterHint.textContent = log.water >= g.water
+    ? `${fmt(log.water * GLASS_ML)} ml · goal of ${g.water} glasses reached`
+    : `${fmt(log.water * GLASS_ML)} ml · ${g.water - log.water} more to reach ${g.water} glasses`;
 
   // Sleep
   setValue(el.bed, log.sleep.bed);
   setValue(el.wake, log.sleep.wake);
   const hours = sleepHours(log.sleep.bed, log.sleep.wake);
-  if (hours == null) el.sleepHint.textContent = `Goal ${GOALS.sleepMin}–${GOALS.sleepMax} hours`;
-  else {
-    const note = hours < GOALS.sleepMin ? "below goal" : hours > GOALS.sleepMax ? "above goal" : "in goal range";
-    el.sleepHint.textContent = `${formatHours(hours)} of sleep · ${note}`;
-  }
+  if (hours == null) el.sleepHint.textContent = `Goal ${g.sleep} hours`;
+  else if (hours >= g.sleep) el.sleepHint.textContent = `${formatHours(hours)} of sleep · goal of ${g.sleep}h reached`;
+  else el.sleepHint.textContent = `${formatHours(hours)} of sleep · ${formatHours(g.sleep - hours)} short of your ${g.sleep}h goal`;
 
   // Period (women only, private)
   renderCycle();
@@ -846,7 +1080,7 @@ let shareBusy = false;
 function syncShareProfile() {
   if (!sharing?.code || !store) return Promise.resolve();
   const cycle = sharing.cycle && isFemale() ? (profile?.cycle || { starts: [], length: null }) : null;
-  return store.mirrorProfile(sharing.code, displayName(), cycle).catch(() => {});
+  return store.mirrorProfile(sharing.code, displayName(), cycle, profile?.goals || null).catch(() => {});
 }
 
 let shareCycleChoice = null; // her answer to "Share your period tracker too?"
@@ -883,7 +1117,7 @@ async function createShareCode() {
   el.shareMsg.textContent = "Creating your code…";
   const code = newShareCode();
   try {
-    await store.mirrorProfile(code, name, withCycle ? (profile?.cycle || { starts: [], length: null }) : null);
+    await store.mirrorProfile(code, name, withCycle ? (profile?.cycle || { starts: [], length: null }) : null, profile?.goals || null);
     await store.copyAllDays(code);
     await store.saveSharing(code, withCycle);
     sharing = { code, cycle: withCycle };
@@ -1011,7 +1245,7 @@ function viewPerson(code) {
     viewName = links.find((p) => p.code === code)?.name || "";
     viewCycle = null;
     unwatchViewProfile = store.watchSharedProfile(code, (p, meta) => {
-      if (p) { viewName = p.name || viewName; viewCycle = p.cycle || null; viewGone = false; }
+      if (p) { viewName = p.name || viewName; viewCycle = p.cycle || null; viewGoals = p.goals || null; viewGone = false; }
       else if (!meta?.fromCache) viewGone = true;
       render();
     }, () => {});
@@ -1405,5 +1639,6 @@ render();
     me = { email: user.email || "" };
     start(firestoreStore(db, user.uid));
     render();
+    loadRecent();
   };
 })();

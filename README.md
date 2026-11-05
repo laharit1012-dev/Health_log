@@ -14,6 +14,8 @@ Each day you can log:
 - **Food**: everything eaten through the day, grouped by meal, with optional calories
 - **Period** (shown only for women): log the day each period starts to see your cycle day, average cycle length and when the next one is expected. This is private unless you choose to share it: when a woman creates her share code, she's asked whether people with the code may also see her period tracker, and she can change that answer any time.
 
+**Goals:** tap **Edit goals** to set your own daily targets for steps, water, sleep and workout minutes (starter goals are 10,000 steps, 8 glasses, 8 hours, 30 minutes). Reached goals get a tick, a small celebration, and a **step streak** counts the days in a row you reached your step goal. A short tip suggests the goal you're closest to finishing.
+
 Use the arrows at the top to look back at earlier days. **Edit profile** changes your name and gender. Gender is asked when you create an account.
 
 ## Install it like an app
