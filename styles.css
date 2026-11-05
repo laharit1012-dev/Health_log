@@ -1261,3 +1261,6 @@ body.has-tabbar .toast { bottom: calc(5.25rem + env(safe-area-inset-bottom, 0px)
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .badge--top { color: #1A1206; } }
 .member__badges { display: flex; gap: 0.375rem; flex-wrap: wrap; margin-top: 0.25rem; }
 .member__who .member__badges .badge { margin-top: 0; }
+
+.level-today { font-size: 0.875rem; font-weight: 700; color: var(--fg); }
+.xp-help p { margin: 0.5rem 0 0; }

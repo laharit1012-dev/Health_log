@@ -42,8 +42,9 @@ Setup (once):
 ## Points, levels and badges
 
 - **Points:** each day earns +10 for logging anything, +20 for each goal reached (steps, water, sleep, workout), +10 for logging food, and a +30 bonus for a perfect day (all four goals). Past days count too.
-- **Levels:** Starter, Walker (100), Mover (300), Hiker (600), Runner (1,000), Climber (1,500), Athlete (2,100), Champion (2,800), Hero (3,600), Legend (4,500) points. Group members see each other's points and levels.
-- **Badges (13):** First step, 10K club, Perfect day, On a roll (3-day step streak), Week warrior (7), Unstoppable (30), Hydration hero, Workout warrior, Well rested, Marathon week, Team player, Runner rank, Group champion (most points in a group of 2 or more).
+- **Levels go up with consistency:** a day with 50+ points is a consistent day; 5 consistent days in a week (Monday to Sunday) moves you up one level. Levels never go down. Names: Starter, Walker, Mover, Hiker, Runner, Climber, Athlete, Champion, Hero, Legend.
+- **Daily title** from today's points: 10+ Warming up, 50+ Go-getter, 90+ Achiever, 130 Superstar. Shown on Today and on each member's box in groups.
+- **Badges (13):** First step, 10K club, Perfect day, On a roll (3-day step streak), Week warrior (7), Unstoppable (30), Hydration hero, Workout warrior, Well rested, Marathon week, Team player, Runner rank (Level 5), Group champion (most points in a group of 2 or more).
 - The Today page shows your total points, level, points to the next level, today's activity ring, and your badge shelf.
 
 ## Cycle phases and cycle updates

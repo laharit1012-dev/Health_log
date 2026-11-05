@@ -15,8 +15,8 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=27";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=27";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=28";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=28";
 
 // ---------- Theme (light / dark) ----------
 const THEME_KEY = "theme";
@@ -411,7 +411,7 @@ const el = {
   cyclePhaseBox: $("cycle-phase"), cyclePhaseName: $("cycle-phase-name"), cyclePhaseNote: $("cycle-phase-note"),
   remCycle: $("rem-cycle"), remCycleList: $("rem-cycle-list"),
   levelCard: $("level-card"), levelNum: $("level-num"), levelName: $("level-name"), levelBar: $("level-bar"),
-  levelHint: $("level-hint"), todayRing: $("today-ring"),
+  levelHint: $("level-hint"), levelToday: $("level-today"), todayRing: $("today-ring"),
   badgesPanel: $("badges-panel"), badgesCount: $("badges-count"), badgeGrid: $("badge-grid"),
   tabbar: $("tabbar"), tabPeriod: $("tab-period"), periodPanel: $("period-panel"),
   installTip: $("install-tip"), installText: $("install-text"), installBtn: $("install-btn"), installClose: $("install-close"),
@@ -1737,15 +1737,43 @@ async function forgetThisDevice() {
 }
 
 // ---------- Points, levels and badges ----------
-const LEVELS = [
-  [0, "Starter"], [100, "Walker"], [300, "Mover"], [600, "Hiker"], [1000, "Runner"],
-  [1500, "Climber"], [2100, "Athlete"], [2800, "Champion"], [3600, "Hero"], [4500, "Legend"],
-];
+// Levels go up one for each consistent week: 5+ days (Monday–Sunday) with 50+ points.
+// They never go down, so steady effort is what moves you up.
+const LEVELS = ["Starter", "Walker", "Mover", "Hiker", "Runner", "Climber", "Athlete", "Champion", "Hero", "Legend"];
+const CONSISTENT_POINTS = 50;
+const CONSISTENT_DAYS = 5;
 
-function levelFor(xp) {
-  let i = 0;
-  while (i + 1 < LEVELS.length && xp >= LEVELS[i + 1][0]) i++;
-  return { level: i + 1, name: LEVELS[i][1], floor: LEVELS[i][0], next: LEVELS[i + 1]?.[0] ?? null };
+function weekStart(iso) {
+  const d = fromISO(iso);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // back to Monday
+  return toISO(d);
+}
+
+function levelInfo(xpDays = profile?.xpDays || {}) {
+  const perWeek = {};
+  for (const [d, pts] of Object.entries(xpDays)) {
+    if ((Number(pts) || 0) >= CONSISTENT_POINTS) perWeek[weekStart(d)] = (perWeek[weekStart(d)] || 0) + 1;
+  }
+  const weeks = Object.keys(perWeek).filter((w) => perWeek[w] >= CONSISTENT_DAYS);
+  const level = Math.min(LEVELS.length, 1 + weeks.length);
+  const thisWeek = weekStart(todayISO());
+  return {
+    level,
+    name: LEVELS[level - 1],
+    weeks: weeks.length,
+    weekDays: perWeek[thisWeek] || 0,
+    weekDone: weeks.includes(thisWeek),
+    top: level === LEVELS.length,
+  };
+}
+
+// Today's title from today's points
+function dailyTitle(points) {
+  if (points >= 130) return "Superstar";
+  if (points >= 90) return "Achiever";
+  if (points >= 50) return "Go-getter";
+  if (points > 0) return "Warming up";
+  return "Not started";
 }
 
 // Points for one day: +10 for logging anything, +20 per goal reached, +10 for food, +30 for a perfect day
@@ -1772,7 +1800,7 @@ const BADGES = [
   { id: "sleep5", glyph: "Zz", name: "Well rested", how: "Sleep goal 5 nights in a row" },
   { id: "marathon", glyph: "42K", name: "Marathon week", how: "55,000 steps in 7 days" },
   { id: "team", glyph: "+", name: "Team player", how: "Join or create a group" },
-  { id: "level5", glyph: "L5", name: "Runner rank", how: "Reach Level 5" },
+  { id: "level5", glyph: "L5", name: "Runner rank", how: "Reach Level 5 (4 consistent weeks)" },
   { id: "champion", glyph: "#1", name: "Group champion", how: "Most points in a group" },
 ];
 
@@ -1820,7 +1848,7 @@ function earnedNow() {
   if (longestRun((d) => met(d).sleep) >= 5) out.add("sleep5");
   if (windowSum((d) => d.steps || 0) >= 55000) out.add("marathon");
   if ((profile?.groups || []).length) out.add("team");
-  if (levelFor(totalXP()).level >= 5) out.add("level5");
+  if (levelInfo().level >= 5) out.add("level5");
   return out;
 }
 
@@ -1839,7 +1867,7 @@ async function updateProgress(onlyDate, { quiet = false } = {}) {
   progressBusy = true;
   try {
     const g = goalsFor(profile.goals);
-    const before = levelFor(totalXP());
+    const before = levelInfo();
     const changes = {};
     for (const d of knownDays()) {
       if (onlyDate && d.date !== onlyDate) continue;
@@ -1851,9 +1879,9 @@ async function updateProgress(onlyDate, { quiet = false } = {}) {
       await store.saveXP(changes).catch(() => {});
       syncGroups(); // so groups see your new points
     }
-    const after = levelFor(totalXP());
+    const after = levelInfo();
     if (!quiet && after.level > before.level) {
-      showToast(`Level up! You're now Level ${after.level} · ${after.name}`);
+      showToast(`Consistent week! Level up to Level ${after.level} · ${after.name}`);
       burstConfetti();
     }
     await awardBadges([...earnedNow()]);
@@ -1880,13 +1908,18 @@ function renderProgress() {
   el.levelCard.hidden = !show;
   if (show) {
     const xp = totalXP();
-    const lv = levelFor(xp);
-    const todayXP = dayXP(logNow(), goalsNow());
+    const lv = levelInfo();
+    const dayPts = dayXP(logNow(), goalsNow());
     el.levelNum.textContent = fmt(xp);
     el.levelName.textContent = `Level ${lv.level} · ${lv.name}`;
-    el.levelBar.style.width = lv.next ? Math.round(((xp - lv.floor) / (lv.next - lv.floor)) * 100) + "%" : "100%";
-    el.levelHint.textContent = (lv.next ? `${fmt(lv.next - xp)} points to Level ${lv.level + 1}` : "Top level reached!") +
-      (date === todayISO() ? ` · +${todayXP} points today` : "");
+    const days = Math.min(lv.weekDays, CONSISTENT_DAYS);
+    el.levelBar.style.width = (lv.top || lv.weekDone ? 100 : Math.round((days / CONSISTENT_DAYS) * 100)) + "%";
+    el.levelHint.textContent = lv.top
+      ? "Top level! Keep your consistent weeks going."
+      : lv.weekDone
+        ? "Consistent week done! Next level comes with next week's 5 days."
+        : `This week: ${days} of ${CONSISTENT_DAYS} consistent days → Level ${lv.level + 1}`;
+    el.levelToday.textContent = `${date === todayISO() ? "Today" : dayTitle(date)}: ${dayPts} points · ${dailyTitle(dayPts)}`;
     const sm = daySummary(logNow(), goalsNow());
     el.todayRing.replaceChildren(rateRing(activityRate(sm), date === todayISO() ? "today" : "this day"));
   }
@@ -1931,7 +1964,17 @@ function daySummary(log, g) {
     wo: workoutMinutes(n), wog: g.workout,
     sl: sleepHours(n.sleep.bed, n.sleep.wake), slg: g.sleep,
     fd: n.foods.length, kc: caloriesOf(n),
+    wa: n.water, wag: g.water,
   };
+}
+
+// A member's points for a day, from their shared summary (same rules as your own points)
+function summaryPoints(sm) {
+  if (!sm) return 0;
+  const any = sm.st || sm.wo || sm.sl != null || sm.fd || sm.wa;
+  if (!any) return 0;
+  const hits = [sm.st >= sm.stg, sm.wag ? (sm.wa || 0) >= sm.wag : false, sm.sl != null && sm.sl >= sm.slg, sm.wo >= sm.wog].filter(Boolean).length;
+  return 10 + 20 * hits + (sm.fd ? 10 : 0) + (hits === 4 ? 30 : 0);
 }
 
 function memberData() {
@@ -1942,7 +1985,7 @@ function memberData() {
     const log = drafts[d] || recentLogs?.[d] || (d === date && dayLog ? dayLog : null);
     if (log) days[d] = daySummary({ ...log, date: d }, g);
   }
-  return { name: displayName() || "Member", updatedAt: Date.now(), days, level: levelFor(totalXP()).level, points: totalXP() };
+  return { name: displayName() || "Member", updatedAt: Date.now(), days, level: levelInfo().level, points: totalXP() };
 }
 
 let groupSyncTimer = null;
@@ -1966,12 +2009,11 @@ function metOf(sm) {
 const metCount = (sm) => Object.values(metOf(sm)).filter(Boolean).length;
 
 function statusFor(sm) {
-  if (!sm) return { text: "Not logged yet", cls: "badge--quiet" };
-  const n = metCount(sm);
-  if (n === 4) return { text: "Crushing it", cls: "badge--great" };
-  if (n === 3) return { text: "On track", cls: "badge--good" };
-  if (n === 2) return { text: "Getting there", cls: "badge--warm" };
-  return { text: "Needs a nudge", cls: "badge--quiet" };
+  const pts = summaryPoints(sm);
+  if (!pts) return { text: "Not logged yet", cls: "badge--quiet" };
+  const title = dailyTitle(pts);
+  const cls = title === "Superstar" ? "badge--great" : title === "Achiever" ? "badge--good" : title === "Go-getter" ? "badge--warm" : "badge--quiet";
+  return { text: `${title} · ${pts} pts today`, cls };
 }
 
 // Activity rate: progress toward steps, workout and sleep goals, plus food logged.
