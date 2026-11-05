@@ -2,6 +2,8 @@
 //
 // type "window": fixed dates. A day counts when it meets the rule; finish by
 //   reaching `target` counted days between `start` and `end`.
+// type "days": starts the day you join (or when access is given) and lasts `length` days;
+//   finish by reaching `target` counted days.
 // type "streak": starts the day you join; `length` days in a row that meet the
 //   rule. Missing a day means starting again.
 //
@@ -10,6 +12,7 @@
 //   stepsWater   – step goal and water goal reached
 //   stepsWorkout – step goal and workout goal reached
 //   big3         – workout 30+ min, water goal and step goal reached
+//   fast16 / fast23 / fast36 – a fast of 16+ / 23+ / 36+ hours ended that day
 
 export const CHALLENGES = [
   {
@@ -65,6 +68,37 @@ export const CHALLENGES = [
     rule: "big3",
     about: "75 days in a row: work out 30+ minutes, reach your water goal and your step goal. Miss a day and you start again.",
   },
+  // Fasting challenges: start the day you join; reach `target` fasting days within `length` days
+  {
+    id: "fast-if16",
+    name: "Intermittent Fasting Challenge",
+    emoji: "⏱️",
+    type: "days",
+    length: 21,
+    target: 18,
+    rule: "fast16",
+    about: "21 days of 16:8 fasting: complete a 16-hour fast on 18 of the 21 days. Start and end each fast in the app.",
+  },
+  {
+    id: "fast-omad",
+    name: "One Meal a Day Challenge",
+    emoji: "🍽️",
+    type: "days",
+    length: 21,
+    target: 14,
+    rule: "fast23",
+    about: "21 days of OMAD: eat one meal a day, fasting 23 hours, on 14 of the 21 days.",
+  },
+  {
+    id: "fast-36",
+    name: "36-Hour Fast Challenge",
+    emoji: "💧",
+    type: "days",
+    length: 28,
+    target: 4,
+    rule: "fast36",
+    about: "4 weeks, 4 long fasts: complete a 36-hour fast once a week. For experienced fasters only; check with a doctor first.",
+  },
 ];
 
 export const RULE_TEXT = {
@@ -72,4 +106,7 @@ export const RULE_TEXT = {
   stepsWater: "step + water goals",
   stepsWorkout: "step + workout goals",
   big3: "30+ min workout, water + step goals",
+  fast16: "a fast of 16+ hours",
+  fast23: "a fast of 23+ hours (one meal a day)",
+  fast36: "a fast of 36+ hours",
 };

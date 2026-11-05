@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=43">
+  <link rel="stylesheet" href="styles.css?v=44">
 </head>
 <body>
   <!-- Background wallpaper: full on Today, dimmed on the other pages -->
@@ -327,6 +327,51 @@
         </form>
 
         <div id="food-list" class="food-list"></div>
+      </div>
+
+      <!-- Fasting -->
+      <div class="food fasting">
+        <div class="section-head">
+          <h3>Fasting</h3>
+          <span id="fast-total" class="hint"></span>
+        </div>
+        <div id="fast-active" class="fast-active" hidden>
+          <div class="fast-active__top">
+            <strong id="fast-elapsed"></strong>
+            <span id="fast-goal" class="hint"></span>
+          </div>
+          <div class="meter" aria-hidden="true"><span id="fast-bar"></span></div>
+          <p id="fast-when" class="hint"></p>
+          <div class="row">
+            <button id="fast-end" class="btn" type="button">End fast</button>
+            <button id="fast-cancel" class="btn btn--ghost btn--small" type="button">Cancel fast</button>
+          </div>
+        </div>
+        <form id="fast-form" class="fast-form" novalidate>
+          <label class="field">
+            <span>Plan</span>
+            <select id="fast-plan">
+              <option value="if16">16:8 intermittent fasting (16 h)</option>
+              <option value="omad">One meal a day (23 h)</option>
+              <option value="x36">36-hour fast</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Started at</span>
+            <input id="fast-start" type="datetime-local">
+          </label>
+          <button class="btn" type="submit">Start fast</button>
+        </form>
+        <div id="fast-warn" class="view-note fast-warn" hidden>
+          <p><strong>Before a 36-hour fast:</strong> long fasts aren't safe for everyone. Don't do one if you're pregnant or breastfeeding, under 18, have diabetes or low blood pressure, take regular medicine, or have had an eating disorder. Drink plenty of water, and stop if you feel dizzy, faint or unwell. Check with a doctor first.</p>
+          <div class="row">
+            <button id="fast-warn-yes" class="btn btn--small" type="button">I understand, start</button>
+            <button id="fast-warn-no" class="btn btn--ghost btn--small" type="button">Cancel</button>
+          </div>
+        </div>
+        <p id="fast-msg" class="hint" aria-live="polite"></p>
+        <ul id="fast-list" class="fast-list"></ul>
+        <p class="hint">A fast of 16+ hours gives you your full food points that day. Fasting isn't right for everyone: skip it if you're pregnant, breastfeeding, under 18, have diabetes or a history of eating disorders, and check with a doctor first.</p>
       </div>
 
       <div id="goals-box" class="goals-box">
@@ -707,13 +752,13 @@
   </nav>
 
   <footer class="site-footer">
-    <p>Health Log · version <span id="app-version">43</span> · <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a href="refunds.html">Refunds</a> · <a href="prize-rules.html">Prize rules</a></p>
+    <p>Health Log · version <span id="app-version">44</span> · <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a href="refunds.html">Refunds</a> · <a href="prize-rules.html">Prize rules</a></p>
   </footer>
 
   <!-- Goal celebrations -->
   <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <script type="module" src="app.js?v=43"></script>
+  <script type="module" src="app.js?v=44"></script>
 </body>
 </html>

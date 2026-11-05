@@ -15,11 +15,11 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove, deleteField,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=43";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=43";
-import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=43";
-import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=43";
-import { SHOP, shopItem } from "./shop.js?v=43";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=44";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=44";
+import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=44";
+import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=44";
+import { SHOP, shopItem } from "./shop.js?v=44";
 
 // ---------- Challenge invites ----------
 // A link like ?invite=christmas-2026&group=K7QF-9XMA-2PDW is kept until the person signs in,
@@ -42,7 +42,7 @@ function clearInvite() { try { localStorage.removeItem(INVITE_KEY); } catch {} }
 
 // ---------- App version and updates ----------
 // Bump APP_VERSION and version.json together when publishing an update.
-const APP_VERSION = 43;
+const APP_VERSION = 44;
 
 // Open the newest version: a unique address makes the phone fetch fresh files
 function reloadFresh() {
@@ -163,6 +163,7 @@ function emptyLog(date) {
     sleep: { bed: "", wake: "" },
     workouts: [],
     foods: [],
+    fasts: [],
   };
 }
 
@@ -175,6 +176,7 @@ function normalize(log, date) {
     ...base, ...rest,
     sleep: { ...base.sleep, ...(log.sleep || {}) },
     foods: Array.isArray(log.foods) ? log.foods : [],
+    fasts: Array.isArray(log.fasts) ? log.fasts : [],
     workouts: Array.isArray(log.workouts) ? log.workouts : legacyWorkout(log.workout),
   };
 }
@@ -186,6 +188,9 @@ function legacyWorkout(w) {
 }
 
 const workoutMinutes = (log) => log.workouts.reduce((sum, w) => sum + (Number(w.minutes) || 0), 0);
+// Longest fast that ended on this day, in hours
+const fastHours = (log) => Math.max(0, ...(Array.isArray(log?.fasts) ? log.fasts : []).map((f) => Number(f.hours) || 0));
+const FASTED_FOOD_POINTS = 16; // a fast this long counts as full food points
 
 // ---------- Storage (Cloud Firestore) ----------
 // Private to each person (locked by the security rules in firestore.rules):
@@ -211,7 +216,7 @@ function firestoreStore(db, uid, email = "") {
     kind: "account",
     canLink: true,
     watchProfile: (cb, onError) => watch(userRef, (d, m) => cb(d
-      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null, groups: Array.isArray(d.groups) ? d.groups : [], xpDays: d.xpDays || {}, badges: d.badges || {}, plan: d.plan || null, equip: d.equip || "bodyweight", challenges: Array.isArray(d.challenges) ? d.challenges : [], sessions: d.sessions || null }
+      ? { name: d.name || "", gender: d.gender || "", cycle: d.cycle || null, goals: d.goals || null, reminders: d.reminders || null, groups: Array.isArray(d.groups) ? d.groups : [], xpDays: d.xpDays || {}, badges: d.badges || {}, plan: d.plan || null, equip: d.equip || "bodyweight", challenges: Array.isArray(d.challenges) ? d.challenges : [], sessions: d.sessions || null, fast: d.fast || null }
       : null, m), onError),
     watchSharing: (cb, onError) => watch(userRef, (d, m) => cb(d?.shareCode ? { code: d.shareCode, cycle: !!d.shareCycle } : null, m), onError),
     watchLinks: (cb, onError) => watch(userRef, (d, m) => cb({ people: Array.isArray(d?.links) ? d.links : [] }, m), onError),
@@ -556,6 +561,10 @@ const el = {
   adminFind: $("admin-find"), adminEmail: $("admin-email"), adminPerson: $("admin-person"), adminPersonName: $("admin-person-name"),
   adminPass: $("admin-pass"), adminStart: $("admin-start"), adminEnd: $("admin-end"), adminGrant: $("admin-grant"),
   adminMsg: $("admin-msg"), adminList: $("admin-list"), adminBoardCh: $("admin-board-ch"), adminBoard: $("admin-board"),
+  fastActive: $("fast-active"), fastElapsed: $("fast-elapsed"), fastGoal: $("fast-goal"), fastBar: $("fast-bar"),
+  fastWhen: $("fast-when"), fastEnd: $("fast-end"), fastCancel: $("fast-cancel"), fastForm: $("fast-form"),
+  fastPlan: $("fast-plan"), fastStart: $("fast-start"), fastWarn: $("fast-warn"), fastWarnYes: $("fast-warn-yes"),
+  fastWarnNo: $("fast-warn-no"), fastMsg: $("fast-msg"), fastList: $("fast-list"), fastTotal: $("fast-total"),
   fab: $("log-fab"), logClose: $("log-close"), backdrop: $("sheet-backdrop"), inviteNote: $("invite-note"),
   groupChallenges: $("group-challenges"),
   tabbar: $("tabbar"), tabPeriod: $("tab-period"), periodPanel: $("period-panel"),
@@ -696,6 +705,7 @@ function render() {
   renderChallenges();
   renderAdmin();
   renderPanel();
+  renderFasting();
   renderLinkPanel();
   setStatus();
 }
@@ -793,6 +803,15 @@ function renderSummary() {
     log.foods.length
       ? (log.foods.length === 1 ? "item" : "items") + (kcal ? ` · ${fmt(kcal)} kcal` : "")
       : "");
+  // Fasting: the fast in progress (your own, today) or the longest one that ended this day
+  const running = !viewing && date === todayISO() ? profile?.fast : null;
+  if (running) {
+    const plan = FAST_PLANS[running.plan] || FAST_PLANS.if16;
+    const h = Math.max(0, (Date.now() - running.start) / 3600000);
+    addStat("Fasting", formatHours(h), `/ ${plan.hours}h`, h >= plan.hours);
+  } else if (log.fasts.length) {
+    addStat("Fasted", formatHours(fastHours(log)), "", fastHours(log) >= FASTED_FOOD_POINTS);
+  }
 }
 
 // ---------- Goals, encouragement and streak ----------
@@ -1599,6 +1618,119 @@ el.prev.addEventListener("click", () => setDate(shiftDate(date, -1)));
 el.next.addEventListener("click", () => setDate(shiftDate(date, 1)));
 el.dayInput.addEventListener("change", () => setDate(el.dayInput.value));
 
+// ---------- Fasting ----------
+// The fast in progress lives on the profile ({ plan, start }), so it carries across days
+// and devices. When it ends, it's saved on the day it ended: log.fasts [{ plan, start, end, hours }].
+const FAST_PLANS = {
+  if16: { label: "16:8 fast", hours: 16 },
+  omad: { label: "One meal a day", hours: 23 },
+  x36: { label: "36-hour fast", hours: 36 },
+};
+let fastStartTouched = false;
+let fastWarned = false;
+
+function toLocalInput(ms) {
+  const d = new Date(ms);
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
+
+function renderFasting() {
+  const log = logNow();
+  const isToday = date === todayISO();
+  const active = !viewing && isToday ? profile?.fast : null;
+  el.fastActive.hidden = !active;
+  el.fastForm.hidden = !!profile?.fast || !!viewing || !isToday || !!blocked;
+  if (el.fastForm.hidden) el.fastWarn.hidden = true;
+  if (active) {
+    const plan = FAST_PLANS[active.plan] || FAST_PLANS.if16;
+    const h = Math.max(0, (Date.now() - active.start) / 3600000);
+    el.fastElapsed.textContent = `Fasting for ${formatHours(h)}`;
+    el.fastGoal.textContent = `${plan.label} · goal ${plan.hours}h`;
+    el.fastBar.style.width = Math.min(100, (h / plan.hours) * 100) + "%";
+    const goalAt = new Date(active.start + plan.hours * 3600000);
+    el.fastWhen.textContent = h >= plan.hours
+      ? "Goal reached! 🎉 End your fast whenever you're ready."
+      : `You reach your goal ${goalAt.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}.`;
+  }
+  if (!fastStartTouched && document.activeElement !== el.fastStart) el.fastStart.value = toLocalInput(Date.now());
+
+  el.fastList.replaceChildren();
+  el.fastTotal.textContent = log.fasts.length ? `longest ${formatHours(fastHours(log))}` : "";
+  for (const f of log.fasts) {
+    const plan = FAST_PLANS[f.plan] || FAST_PLANS.if16;
+    const li = document.createElement("li");
+    li.className = "food-row";
+    const item = document.createElement("span");
+    item.className = "food-row__item";
+    item.textContent = `${Number(f.hours) >= plan.hours ? "✓" : "◐"} ${plan.label}`;
+    const meta = document.createElement("span");
+    meta.className = "food-row__meta";
+    meta.textContent = `${formatHours(Number(f.hours) || 0)}${Number(f.hours) >= plan.hours ? "" : ` of ${plan.hours}h`}`;
+    li.append(item, meta);
+    if (!readOnly()) {
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "food-row__delete";
+      del.textContent = "✕";
+      del.setAttribute("aria-label", `Remove ${plan.label}`);
+      del.addEventListener("click", () => edit((l) => { l.fasts = (l.fasts || []).filter((x) => x.id !== f.id); }));
+      li.append(del);
+    }
+    el.fastList.append(li);
+  }
+}
+
+async function saveFast(fast) {
+  profile = { ...(profile || {}), fast };
+  render();
+  try { await store.saveProfile({ fast }); } catch (err) { handleWriteError(err); }
+}
+
+function beginFast() {
+  const plan = el.fastPlan.value;
+  let start = new Date(el.fastStart.value).getTime();
+  if (!Number.isFinite(start) || start > Date.now()) start = Date.now();
+  if (Date.now() - start > 48 * 3600000) { el.fastMsg.textContent = "Pick a start time within the last 2 days."; return; }
+  el.fastMsg.textContent = "";
+  el.fastWarn.hidden = true;
+  fastWarned = false;
+  fastStartTouched = false;
+  saveFast({ plan, start });
+  showToast(`${FAST_PLANS[plan].label} started. You've got this!`, "workout");
+}
+
+el.fastStart.addEventListener("input", () => { fastStartTouched = true; });
+el.fastForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  if (readOnly() || profile?.fast) return;
+  if (el.fastPlan.value === "x36" && !fastWarned) { el.fastWarn.hidden = false; return; }
+  beginFast();
+});
+el.fastWarnYes.addEventListener("click", () => { fastWarned = true; beginFast(); });
+el.fastWarnNo.addEventListener("click", () => { el.fastWarn.hidden = true; fastWarned = false; });
+
+el.fastEnd.addEventListener("click", () => {
+  const a = profile?.fast;
+  if (!a || readOnly() || date !== todayISO()) return;
+  const end = Date.now();
+  const hours = Math.round(((end - a.start) / 3600000) * 10) / 10;
+  const plan = FAST_PLANS[a.plan] || FAST_PLANS.if16;
+  edit((l) => { l.fasts = [...(l.fasts || []), { id: "f-" + end, plan: a.plan, start: a.start, end, hours }]; });
+  saveFast(null);
+  if (hours >= plan.hours) { showToast(`Fast complete: ${formatHours(hours)}! Amazing discipline.`, "goal"); burstConfetti(); }
+  else showToast(`Fast ended at ${formatHours(hours)}. Every hour counts!`, "workout");
+});
+let fastCancelArmed = false;
+el.fastCancel.addEventListener("click", () => {
+  if (!fastCancelArmed) { fastCancelArmed = true; el.fastCancel.textContent = "Tap again to cancel"; return; }
+  fastCancelArmed = false;
+  el.fastCancel.textContent = "Cancel fast";
+  saveFast(null);
+});
+// Keep the timer moving while a fast is running
+setInterval(() => { if (profile?.fast && !el.panel.hidden) renderFasting(); }, 30000);
+
 // ---------- The log sheet (+ button on Today) ----------
 function openLog() {
   if (viewing || !store) return;
@@ -2069,10 +2201,12 @@ function dailyTitle(points) {
 // for three meals logged (breakfast, lunch, dinner or snack).
 const POINTS_EACH = 20;
 const part = (v, goal) => (goal > 0 ? Math.min(1, (Number(v) || 0) / goal) : 0);
-function pointsFrom({ steps, stepsGoal, water, waterGoal, sleep, sleepGoal, workout, workoutGoal, meals }) {
+function pointsFrom({ steps, stepsGoal, water, waterGoal, sleep, sleepGoal, workout, workoutGoal, meals, fasted }) {
+  // Food: 3 meals logged, or a fast of 16+ hours that day (people fasting can't log 3 meals)
+  const food = Math.max(Math.min(1, (meals || 0) / 3), (fasted || 0) >= FASTED_FOOD_POINTS ? 1 : 0);
   return Math.round(POINTS_EACH * (
     part(steps, stepsGoal) + part(water, waterGoal) + part(sleep, sleepGoal) +
-    part(workout, workoutGoal) + Math.min(1, (meals || 0) / 3)));
+    part(workout, workoutGoal) + food));
 }
 const mealsLogged = (foods) => new Set(foods.map((f) => f.meal || "Snack")).size;
 
@@ -2084,6 +2218,7 @@ function dayXP(log, g) {
     sleep: sleepHours(n.sleep.bed, n.sleep.wake), sleepGoal: g.sleep,
     workout: workoutMinutes(n), workoutGoal: g.workout,
     meals: mealsLogged(n.foods),
+    fasted: fastHours(n),
   });
 }
 
@@ -2110,7 +2245,9 @@ const allBadges = () => [
   ...BADGES,
   ...CHALLENGES.map((c) => ({
     id: "ch-" + c.id, glyph: c.emoji, name: c.name,
-    how: c.type === "streak" ? `${c.length} days in a row` : `${c.target} days by ${shortDate(c.end)}`,
+    how: c.type === "streak" ? `${c.length} days in a row`
+      : c.type === "days" ? `${c.target} of ${c.length} days`
+      : `${c.target} days by ${shortDate(c.end)}`,
   })),
 ];
 
@@ -2615,6 +2752,9 @@ function challengeDayOK(rule, d) {
     case "stepsWater": return !!log && (log.steps || 0) >= g.steps && log.water >= g.water;
     case "stepsWorkout": return !!log && (log.steps || 0) >= g.steps && workoutMinutes(log) >= g.workout;
     case "big3": return !!log && workoutMinutes(log) >= 30 && log.water >= g.water && (log.steps || 0) >= g.steps;
+    case "fast16": return !!log && fastHours(log) >= 16;
+    case "fast23": return !!log && fastHours(log) >= 23;
+    case "fast36": return !!log && fastHours(log) >= 36;
     default: return false;
   }
 }
@@ -2641,6 +2781,20 @@ function challengeStatus(c) {
     }
     if (!broken && count < c.length && challengeDayOK(c.rule, today)) { count++; points += dayPoints(today); }
     return { joined: true, count, points, target: c.length, broken: broken && count < c.length, done: count >= c.length };
+  }
+  if (c.type === "days") {
+    // Starts the day you join; reach `target` counted days within `length` days
+    if (!mine) return { joined: false, count: 0, points: 0, target: c.target };
+    const last = shiftDate(mine.joined, c.length - 1);
+    const ended = today > last;
+    let count = 0, points = 0;
+    for (let d = mine.joined; d <= (ended ? last : today); d = shiftDate(d, 1)) {
+      if (challengeDayOK(c.rule, d)) count++;
+      points += dayPoints(d);
+    }
+    const daysLeft = ended ? 0 : diffDays(today, last) + 1;
+    const done = count >= c.target;
+    return { joined: true, count, points, target: c.target, ended, daysLeft, done, endDate: last, possible: done || count + daysLeft >= c.target };
   }
   const upcoming = today < c.start;
   const ended = today > c.end;
@@ -2675,9 +2829,18 @@ async function setChallenge(id, join) {
 
 const challengeDates = (c) => c.type === "streak"
   ? `Start any day · ${c.length} days in a row`
-  : `${shortDate(c.start)} – ${shortDate(c.end)}`;
+  : c.type === "days"
+    ? `Start any day · ${c.length} days`
+    : `${shortDate(c.start)} – ${shortDate(c.end)}`;
 
 function challengeLine(c, st) {
+  if (c.type === "days") {
+    if (!st.joined) return "Join to start today.";
+    if (st.done) return st.ended ? `Completed! ${st.count} of ${c.length} days.` : `Completed! ${st.count} days so far.`;
+    if (st.ended) return `Ended · ${st.count} of ${c.target} days`;
+    if (!st.possible) return `${st.count} of ${c.target} days · out of reach this time, but every day counts!`;
+    return `${st.count} of ${c.target} days · ${st.daysLeft} day${st.daysLeft === 1 ? "" : "s"} left`;
+  }
   if (c.type === "streak") {
     if (!st.joined) return "Join to start today.";
     if (st.done) return "Completed! Amazing discipline.";
@@ -2829,6 +2992,11 @@ function renderChallenges() {
       b.addEventListener("click", () => setChallenge(c.id, true));
       actions.append(b);
     } else if (st.joined) {
+      if (c.type === "days" && st.ended) {
+        const r = document.createElement("button"); r.type = "button"; r.className = "btn btn--small"; r.textContent = "Start again today";
+        r.addEventListener("click", () => setChallenge(c.id, true));
+        actions.append(r);
+      }
       if (st.broken) {
         const r = document.createElement("button"); r.type = "button"; r.className = "btn btn--small"; r.textContent = "Restart from today";
         r.addEventListener("click", () => setChallenge(c.id, true));
@@ -3004,7 +3172,7 @@ function adminDefaults() {
   const start = el.adminStart.value || todayISO();
   const c = CHALLENGES.find((x) => x.id === pass);
   if (!c) el.adminEnd.value = "";                                        // all access: no end
-  else if (c.type === "streak") el.adminEnd.value = shiftDate(start, c.length - 1);
+  else if (c.type === "streak" || c.type === "days") el.adminEnd.value = shiftDate(start, c.length - 1);
   else el.adminEnd.value = c.end;
 }
 
@@ -3208,7 +3376,7 @@ function daySummary(log, g) {
     wo: workoutMinutes(n), wog: g.workout,
     sl: sleepHours(n.sleep.bed, n.sleep.wake), slg: g.sleep,
     fd: n.foods.length, kc: caloriesOf(n),
-    wa: n.water, wag: g.water, ml: mealsLogged(n.foods),
+    wa: n.water, wag: g.water, ml: mealsLogged(n.foods), fh: fastHours(n),
   };
 }
 
@@ -3221,6 +3389,7 @@ function summaryPoints(sm) {
     sleep: sm.sl, sleepGoal: sm.slg,
     workout: sm.wo, workoutGoal: sm.wog,
     meals: sm.ml ?? Math.min(3, sm.fd || 0),
+    fasted: sm.fh || 0,
   });
 }
 
