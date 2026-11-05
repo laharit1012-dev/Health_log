@@ -15,11 +15,11 @@ import {
   getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocs, deleteDoc, query, where, arrayUnion, arrayRemove, deleteField,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported as messagingSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-import { firebaseConfig, vapidKey } from "./firebase-config.js?v=42";
-import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=42";
-import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=42";
-import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=42";
-import { SHOP, shopItem } from "./shop.js?v=42";
+import { firebaseConfig, vapidKey } from "./firebase-config.js?v=43";
+import { cyclePhase, PHASES } from "./reminders/schedule.mjs?v=43";
+import { KINDS, VIDEOS, PLANS, PHASE_WORKOUTS, PHASE_TIPS, FOLDERS } from "./workouts.js?v=43";
+import { CHALLENGES, RULE_TEXT } from "./challenges.js?v=43";
+import { SHOP, shopItem } from "./shop.js?v=43";
 
 // ---------- Challenge invites ----------
 // A link like ?invite=christmas-2026&group=K7QF-9XMA-2PDW is kept until the person signs in,
@@ -42,7 +42,7 @@ function clearInvite() { try { localStorage.removeItem(INVITE_KEY); } catch {} }
 
 // ---------- App version and updates ----------
 // Bump APP_VERSION and version.json together when publishing an update.
-const APP_VERSION = 42;
+const APP_VERSION = 43;
 
 // Open the newest version: a unique address makes the phone fetch fresh files
 function reloadFresh() {
@@ -2406,28 +2406,28 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 function videoCard(v) {
   const card = document.createElement("article");
   card.className = "video";
-  const frame = document.createElement("div");
+  // Videos open in the YouTube app or website (they aren't played inside this paid app,
+  // as YouTube's terms require). The thumbnail links straight to the video.
+  const url = `https://www.youtube.com/watch?v=${v.id}`;
+  const frame = document.createElement("a");
   frame.className = "video__frame";
-  if (playing === v.id) {
-    const iframe = document.createElement("iframe");
-    iframe.src = `https://www.youtube-nocookie.com/embed/${v.id}?autoplay=1&playsinline=1&rel=0`;
-    iframe.title = v.title;
-    iframe.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
-    iframe.allowFullscreen = true;
-    frame.append(iframe);
-  } else {
-    const img = document.createElement("img");
-    img.src = `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`;
-    img.alt = "";
-    img.loading = "lazy";
-    const play = document.createElement("button");
-    play.type = "button";
-    play.className = "video__play";
-    play.setAttribute("aria-label", `Play ${v.title}`);
-    play.innerHTML = "<span>▶</span>";
-    play.addEventListener("click", () => { playing = v.id; render(); });
-    frame.append(img, play);
-  }
+  frame.href = url;
+  frame.target = "_blank";
+  frame.rel = "noopener";
+  frame.setAttribute("aria-label", `Watch ${v.title} on YouTube`);
+  const img = document.createElement("img");
+  img.src = `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`;
+  img.alt = "";
+  img.loading = "lazy";
+  const play = document.createElement("span");
+  play.className = "video__play";
+  play.setAttribute("aria-hidden", "true");
+  play.innerHTML = "<span>▶</span>";
+  const badge = document.createElement("span");
+  badge.className = "video__yt";
+  badge.setAttribute("aria-hidden", "true");
+  badge.textContent = "Opens YouTube ↗";
+  frame.append(img, play, badge);
   const title = document.createElement("div");
   title.className = "video__title";
   title.textContent = v.title;
@@ -2442,11 +2442,12 @@ function videoCard(v) {
   log.textContent = `Log it (${v.minutes} min)`;
   log.addEventListener("click", () => logWorkoutToday(v));
   const yt = document.createElement("a");
-  yt.href = `https://www.youtube.com/watch?v=${v.id}`;
+  yt.className = "btn btn--ghost btn--small";
+  yt.href = url;
   yt.target = "_blank";
   yt.rel = "noopener";
-  yt.textContent = "Watch on YouTube";
-  actions.append(log, yt);
+  yt.textContent = "▶ Watch on YouTube";
+  actions.append(yt, log);
   card.append(frame, title, meta, actions);
   return card;
 }

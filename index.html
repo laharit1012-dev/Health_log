@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=42">
+  <link rel="stylesheet" href="styles.css?v=43">
 </head>
 <body>
   <!-- Background wallpaper: full on Today, dimmed on the other pages -->
@@ -156,7 +156,7 @@
           <input id="auth-password" type="password" autocomplete="current-password" minlength="6" required>
         </label>
         <p id="auth-msg" class="auth-msg" aria-live="polite"></p>
-        <p id="auth-terms" class="hint" hidden>By creating an account, you agree to the <a href="privacy.html">privacy policy</a>.</p>
+        <p id="auth-terms" class="hint" hidden>By creating an account, you agree to the <a href="terms.html">terms</a> and <a href="privacy.html">privacy policy</a>. Health Log isn't medical advice; check with a doctor before starting a new workout routine.</p>
         <button id="auth-submit" class="btn" type="submit">Sign in</button>
         <button id="auth-forgot" class="link-btn" type="button">Forgot password?</button>
       </form>
@@ -382,7 +382,7 @@
         <span class="hint">One challenge at a time</span>
       </div>
       <div id="challenge-list" class="challenge-list"></div>
-      <p class="hint">After paying, your access starts within a few hours. Days count automatically from your log.</p>
+      <p class="hint">After paying, your access starts within a few hours. Days count automatically from your log. See the <a href="prize-rules.html">prize rules</a> and <a href="refunds.html">refund policy</a>.</p>
     </section>
 
     <!-- Admin: give people access (only visible to admins) -->
@@ -707,13 +707,13 @@
   </nav>
 
   <footer class="site-footer">
-    <p>Health Log · version <span id="app-version">42</span> · <a href="privacy.html">Privacy policy</a></p>
+    <p>Health Log · version <span id="app-version">43</span> · <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a href="refunds.html">Refunds</a> · <a href="prize-rules.html">Prize rules</a></p>
   </footer>
 
   <!-- Goal celebrations -->
   <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <script type="module" src="app.js?v=42"></script>
+  <script type="module" src="app.js?v=43"></script>
 </body>
 </html>
